@@ -1,0 +1,29 @@
+kind = "video"
+videoAspectRatio = "16:9"
+previewPath = "/phish-intake-film/"
+title = "Phish Intake Analyzer — Project Film"
+description = "An animated project overview showing how the Phish Intake Analyzer turns suspicious SMS and email submissions into clear, actionable incident findings."
+version = "1.0.0"
+id = "artifacts/phish-intake-analyzer-film"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/phish-intake-film/" ]
+localPort = 22893
+
+[services.development]
+run = "pnpm --filter @workspace/phish-intake-analyzer-film run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/phish-intake-analyzer-film", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/phish-intake-analyzer-film/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22893"
+BASE_PATH = "/phish-intake-film/"
