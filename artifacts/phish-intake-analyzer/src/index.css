@@ -487,5 +487,29 @@
 .fade-in { animation:fade-in .35s ease-out both; }
 @keyframes fade-in { from { opacity:0;transform:translateY(7px); } to { opacity:1;transform:translateY(0); } }
 .footer-note { margin:27px auto 0;max-width:1320px;border-top:1px solid #dfdcd2;padding:17px clamp(16px,4vw,54px) 0;display:flex;justify-content:space-between;gap:16px;color:#8c938e;font:10px var(--app-font-mono);letter-spacing:.03em; }
+.voice-intro { display:flex;align-items:center;gap:12px;margin:2px 0 18px;padding:13px;border:1px solid #dce6dc;border-radius:9px;background:#f0f5ef; }
+.voice-intro-mark { width:36px;height:36px;display:grid;place-items:center;flex:none;border-radius:9px;background:#dfece1;color:#34725d; }
+.voice-intro strong,.voice-intro span { display:block; }
+.voice-intro strong { color:#34464a;font-size:12px; }
+.voice-intro span { color:#7b8580;font-size:10px;line-height:1.5;margin-top:3px; }
+.voice-choice { display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:17px;padding:4px;border:1px solid #e5e1d6;border-radius:9px;background:#f0eee7; }
+.voice-choice-button { display:flex;align-items:center;justify-content:center;gap:7px;min-height:37px;border:0;border-radius:6px;background:transparent;color:#68736f;font-size:11px;font-weight:700;cursor:pointer;transition:background .18s,color .18s,transform .18s; }
+.voice-choice-button:hover { color:#202c39;transform:translateY(-1px); }
+.voice-choice-button.active { background:#fcfaf4;color:#276c59;box-shadow:0 1px 4px rgba(29,45,46,.1); }
+.audio-dropzone { display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:25px 14px 19px;border:1px dashed #bfcfc4;border-radius:10px;background:#f5f6ef;transition:background .18s,border-color .18s; }
+.audio-dropzone.dragging { border-color:#47836b;background:#eaf2e9; }
+.audio-drop-icon { width:39px;height:39px;display:grid;place-items:center;border-radius:12px;background:#e2eee4;color:#397a68;margin-bottom:3px; }
+.audio-dropzone strong { max-width:100%;overflow-wrap:anywhere;color:#34454d;font-size:12px; }
+.audio-dropzone > span:not(.audio-drop-icon) { color:#89918c;font:10px var(--app-font-mono); }
+.audio-dropzone .quiet-button { margin-top:4px;background:#fcfaf4; }
+.audio-remove { margin-top:9px; }
+.audio-privacy { margin:9px 0 0;color:#828c86;font-size:10px;line-height:1.5; }
+.transcript-output { max-height:320px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;margin:0;padding:12px;background:#f5f3ed;border:1px solid #e8e4da;border-radius:7px;color:#34454d;font:11px/1.65 var(--app-font-mono); }
+.voice-indicator { padding:11px; }
+.voice-indicator .rep-tag { max-width:55%;overflow:hidden;text-overflow:ellipsis; }
+.quote-list { display:grid;gap:7px;margin:10px 0 0;padding:0;list-style:none; }
+.quote-list li { padding:8px 10px;border-left:2px solid #bb755c;background:#f7eee8;color:#754b3c;font:11px/1.55 var(--app-font-mono);overflow-wrap:anywhere; }
+.retry-inline { display:inline-flex;margin-left:8px;border:0;background:transparent;color:inherit;font-weight:700;text-decoration:underline;cursor:pointer; }
 @media (max-width: 800px) { .work-grid{grid-template-columns:1fr}.result-panel{min-height:0}.empty-result{min-height:300px}.intro{margin-bottom:24px}.topbar{height:62px}.topbar-meta .meta-label{display:none} }
-@media (max-width: 480px) { .topbar{padding:0 16px}.topbar-brand{font-size:15px}.topbar-meta{gap:8px;font-size:9px}.workbench{padding-top:28px}.intro h1{font-size:36px}.source-switch{width:100%}.source-option{flex:1;justify-content:center;padding:10px 7px}.message-area{min-height:204px}.footer-note{display:block;line-height:1.7}.footer-note span{display:block}.score-row{gap:13px} }
+@media (max-width: 520px) { .source-switch{width:100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));}.source-option{min-width:0;flex-direction:column;gap:5px;padding:9px 3px;font-size:9px;line-height:1.2;text-align:center}.source-option svg{width:15px;height:15px}.voice-choice-button{font-size:10px;gap:5px;padding:0 4px}.voice-intro{align-items:flex-start} }
+@media (max-width: 480px) { .topbar{padding:0 16px}.topbar-brand{font-size:15px}.topbar-meta{gap:8px;font-size:9px}.workbench{padding-top:28px}.intro h1{font-size:36px}.message-area{min-height:204px}.footer-note{display:block;line-height:1.7}.footer-note span{display:block}.score-row{gap:13px} }

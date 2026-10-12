@@ -62,6 +62,51 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /triage/voice:
+    post:
+      operationId: triageVoice
+      tags: [analysis]
+      summary: Analyze a voice transcript or transcribe an audio recording
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoiceTranscriptInput"
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/VoiceAudioInput"
+      responses:
+        "200":
+          description: Voice triage completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceTriageResult"
+        "400":
+          description: Invalid voice triage input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: Audio exceeds the upload limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "415":
+          description: Unsupported audio format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Transcription provider could not process the audio
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   schemas:
     HealthStatus:
@@ -88,6 +133,84 @@ components:
           minLength: 1
           maxLength: 100000
       required: [source, content]
+    VoiceTranscriptInput:
+      type: object
+      properties:
+        transcript:
+          type: string
+          minLength: 1
+          maxLength: 100000
+      required: [transcript]
+    VoiceAudioInput:
+      type: object
+      properties:
+        audio:
+          type: string
+          format: binary
+          description: MP3, WAV, or M4A audio, up to 24 MiB
+      required: [audio]
+    VoiceTriageResult:
+      type: object
+      properties:
+        source:
+          type: string
+          enum: [voice]
+        analyzedAt:
+          type: string
+          format: date-time
+        transcriptionMode:
+          type: string
+          enum: [provided, openai_whisper, mock_fallback]
+        transcript:
+          type: string
+          maxLength: 100000
+        riskScore:
+          type: integer
+          minimum: 0
+          maximum: 100
+        riskLevel:
+          type: string
+          enum: [low, moderate, high, critical]
+        summary:
+          type: string
+        vishingIndicators:
+          type: array
+          items:
+            $ref: "#/components/schemas/VishingIndicator"
+        factors:
+          type: array
+          items:
+            $ref: "#/components/schemas/RiskFactor"
+        findings:
+          type: array
+          items:
+            type: string
+      required:
+        - source
+        - analyzedAt
+        - transcriptionMode
+        - transcript
+        - riskScore
+        - riskLevel
+        - summary
+        - vishingIndicators
+        - factors
+        - findings
+    VishingIndicator:
+      type: object
+      properties:
+        category:
+          type: string
+          enum: [authority_impersonation, fear_urgency, high_risk_demand]
+        label:
+          type: string
+        quotes:
+          type: array
+          items:
+            type: string
+        detail:
+          type: string
+      required: [category, label, quotes, detail]
     ProviderStatus:
       type: object
       properties:

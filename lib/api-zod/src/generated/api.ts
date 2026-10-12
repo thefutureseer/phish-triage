@@ -96,3 +96,48 @@ export const AnalyzeContentResponse = zod.object({
 })
 
 
+/**
+ * @summary Analyze a voice transcript or transcribe an audio recording
+ */
+export const triageVoiceBodyTranscriptMax = 100000;
+
+
+
+export const TriageVoiceBody = zod.object({
+  "transcript": zod.string().min(1).max(triageVoiceBodyTranscriptMax)
+})
+
+export const triageVoiceResponseTranscriptMax = 100000;
+
+export const triageVoiceResponseRiskScoreMin = 0;
+export const triageVoiceResponseRiskScoreMax = 100;
+
+export const triageVoiceResponseFactorsItemPointsMin = 0;
+
+
+
+export const TriageVoiceResponse = zod.object({
+  "source": zod.enum(['voice']),
+  "analyzedAt": zod.coerce.date(),
+  "transcriptionMode": zod.enum(['provided', 'openai_whisper', 'mock_fallback']),
+  "transcript": zod.string().max(triageVoiceResponseTranscriptMax),
+  "riskScore": zod.number().int().min(triageVoiceResponseRiskScoreMin).max(triageVoiceResponseRiskScoreMax),
+  "riskLevel": zod.enum(['low', 'moderate', 'high', 'critical']),
+  "summary": zod.string(),
+  "vishingIndicators": zod.array(zod.object({
+  "category": zod.enum(['authority_impersonation', 'fear_urgency', 'high_risk_demand']),
+  "label": zod.string(),
+  "quotes": zod.array(zod.string()),
+  "detail": zod.string()
+})),
+  "factors": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "points": zod.number().int().min(triageVoiceResponseFactorsItemPointsMin),
+  "triggered": zod.boolean(),
+  "detail": zod.string()
+})),
+  "findings": zod.array(zod.string())
+})
+
+

@@ -24,7 +24,10 @@ import type {
   AnalyzeInput,
   Error,
   HealthStatus,
-  ProviderStatus
+  ProviderStatus,
+  VoiceAudioInput,
+  VoiceTranscriptInput,
+  VoiceTriageResult
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -295,5 +298,79 @@ export const useAnalyzeContent = <TError = ErrorType<Error>,
         TContext
       > => {
       return useMutation(getAnalyzeContentMutationOptions(options));
+    }
+
+export const getTriageVoiceUrl = () => {
+
+
+
+
+  return `/api/triage/voice`
+}
+
+/**
+ * @summary Analyze a voice transcript or transcribe an audio recording
+ */
+export const triageVoice = async (triageVoiceBody: VoiceTranscriptInput | VoiceAudioInput, options?: Parameters<typeof customFetch>[1]): Promise<VoiceTriageResult> => {
+
+  return customFetch<VoiceTriageResult>(getTriageVoiceUrl(),
+  {
+    ...options,
+    method: 'POST'
+    ,
+    body: JSON.stringify(triageVoiceBody)
+  }
+);}
+
+
+
+
+
+export const getTriageVoiceMutationKey = () => ['triageVoice'] as const;
+
+export const getTriageVoiceMutationOptions = <TError = ErrorType<Error>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof triageVoice>>, TError,TriageVoiceMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof triageVoice>>, TError,TriageVoiceMutationVariables, TContext> => {
+
+const mutationKey = getTriageVoiceMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof triageVoice>>, TriageVoiceMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  triageVoice(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TriageVoiceMutationResult = NonNullable<Awaited<ReturnType<typeof triageVoice>>>
+    export type TriageVoiceMutationBody = BodyType<VoiceTranscriptInput | VoiceAudioInput>
+    export type TriageVoiceMutationError = ErrorType<Error>
+    export type TriageVoiceMutationVariables = {data: BodyType<VoiceTranscriptInput | VoiceAudioInput>}
+
+    /**
+ * @summary Analyze a voice transcript or transcribe an audio recording
+ */
+export const useTriageVoice = <TError = ErrorType<Error>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof triageVoice>>, TError,TriageVoiceMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof triageVoice>>,
+        TError,
+        TriageVoiceMutationVariables,
+        TContext
+      > => {
+      return useMutation(getTriageVoiceMutationOptions(options));
     }
 

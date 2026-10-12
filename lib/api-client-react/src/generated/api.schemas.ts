@@ -30,6 +30,88 @@ export interface AnalyzeInput {
   content: string;
 }
 
+export interface VoiceTranscriptInput {
+  /**
+     * @minLength 1
+     * @maxLength 100000
+     */
+  transcript: string;
+}
+
+export interface VoiceAudioInput {
+  /** MP3, WAV, or M4A audio, up to 24 MiB */
+  audio: Blob;
+}
+
+export type VoiceTriageResultSource = typeof VoiceTriageResultSource[keyof typeof VoiceTriageResultSource];
+
+
+export const VoiceTriageResultSource = {
+  voice: 'voice',
+} as const;
+
+export type VoiceTriageResultTranscriptionMode = typeof VoiceTriageResultTranscriptionMode[keyof typeof VoiceTriageResultTranscriptionMode];
+
+
+export const VoiceTriageResultTranscriptionMode = {
+  provided: 'provided',
+  openai_whisper: 'openai_whisper',
+  mock_fallback: 'mock_fallback',
+} as const;
+
+export type VoiceTriageResultRiskLevel = typeof VoiceTriageResultRiskLevel[keyof typeof VoiceTriageResultRiskLevel];
+
+
+export const VoiceTriageResultRiskLevel = {
+  low: 'low',
+  moderate: 'moderate',
+  high: 'high',
+  critical: 'critical',
+} as const;
+
+export type VishingIndicatorCategory = typeof VishingIndicatorCategory[keyof typeof VishingIndicatorCategory];
+
+
+export const VishingIndicatorCategory = {
+  authority_impersonation: 'authority_impersonation',
+  fear_urgency: 'fear_urgency',
+  high_risk_demand: 'high_risk_demand',
+} as const;
+
+export interface VishingIndicator {
+  category: VishingIndicatorCategory;
+  label: string;
+  quotes: string[];
+  detail: string;
+}
+
+export interface RiskFactor {
+  id: string;
+  label: string;
+  /** @minimum 0 */
+  points: number;
+  triggered: boolean;
+  detail: string;
+}
+
+export interface VoiceTriageResult {
+  source: VoiceTriageResultSource;
+  analyzedAt: string;
+  transcriptionMode: VoiceTriageResultTranscriptionMode;
+  /** @maxLength 100000 */
+  transcript: string;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  riskScore: number;
+  riskLevel: VoiceTriageResultRiskLevel;
+  summary: string;
+  vishingIndicators: VishingIndicator[];
+  factors: RiskFactor[];
+  findings: string[];
+}
+
 /**
  * @nullable
  */
@@ -193,15 +275,6 @@ export interface DnsAuthObservation {
      * @items.maxLength 2048
      */
   records: string[];
-  detail: string;
-}
-
-export interface RiskFactor {
-  id: string;
-  label: string;
-  /** @minimum 0 */
-  points: number;
-  triggered: boolean;
   detail: string;
 }
 
