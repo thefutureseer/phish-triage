@@ -174,21 +174,42 @@ function getPhones(content: string): string[] {
   const found = new Set<string>();
   for (const match of content.matchAll(/\+?\d[\d ().-]{5,}\d/g)) {
     const value = match[0].trim();
+    if (isIP(value) === 4) continue;
     const digits = value.replace(/\D/g, "");
     if (digits.length >= 7 && digits.length <= 15) found.add(value);
   }
   return [...found].slice(0, 15);
 }
 
-function getDomainsAndIps(content: string, urls: ExtractedUrl[]): string[] {
+function getDomainsAndIps(
+  content: string,
+  urls: ExtractedUrl[],
+  source: "sms" | "email",
+): string[] {
+  let domainContent = content;
+  if (source === "email") {
+    const { headers, body } = splitEmail(content);
+    const visibleHeaders = [...headers.entries()]
+      .filter(
+        ([name]) =>
+          name !== "authentication-results" &&
+          name !== "received-spf" &&
+          name !== "received",
+      )
+      .flatMap(([, values]) => values)
+      .join("\n");
+    domainContent = `${visibleHeaders}\n${body}`;
+    const senderDomain = emailDomain((headers.get("from") ?? [""])[0] ?? "");
+    if (senderDomain) domainContent += `\n${senderDomain}`;
+  }
   const values = new Set<string>();
   const ipPattern = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
-  for (const match of content.matchAll(ipPattern)) {
+  for (const match of domainContent.matchAll(ipPattern)) {
     if (isIP(match[0]) === 4) values.add(match[0]);
   }
   const domainPattern =
     /(?<![@\w.-])(?:[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?\.)+[a-z]{2,63}\b/gi;
-  for (const match of content.matchAll(domainPattern)) {
+  for (const match of domainContent.matchAll(domainPattern)) {
     values.add(match[0].toLowerCase());
   }
   for (const item of urls) {
@@ -270,7 +291,7 @@ function parseAuthChecks(raw: string): AuthCheck[] {
         ? "No result for this mechanism was found in the pasted headers."
         : mechanism === "dmarc"
           ? `Header reports DMARC ${status}${fromDomain ? ` for ${defang(fromDomain)}` : ""}.`
-          : `${mechanism.toUpperCase()} reports ${status}${domain ? ` for ${defang(domain)}` : ""}${aligned === false ? "; domain is not aligned with From." : ""}.`,
+          : `${mechanism.toUpperCase()} reports ${status}${domain ? ` for ${defang(domain)}` : ""}${aligned === false ? "; domain is not aligned with From" : ""}.`,
   });
 
   return [
@@ -593,7 +614,7 @@ export async function analyzeMessage(
     });
   }
 
-  for (const value of getDomainsAndIps(content, urls)) {
+  for (const value of getDomainsAndIps(content, urls, source)) {
     const kind = isIP(value) === 4 ? "ip" : "domain";
     const alreadyCovered = urls.some((url) => url.host === value);
     if (alreadyCovered) continue;
@@ -626,16 +647,22 @@ export async function analyzeMessage(
   const knownAuth = authChecks.filter((check) => check.status !== "unknown");
   const failedAuth = authChecks.filter((check) => check.status === "fail");
   const passedAuth = authChecks.filter((check) => check.status === "pass");
+  const unalignedPass = authChecks.some(
+    (check) =>
+      (check.mechanism === "spf" || check.mechanism === "dkim") &&
+      check.status === "pass" &&
+      check.aligned === false,
+  );
   const authOverall =
     source === "sms"
       ? "not_applicable"
       : knownAuth.length === 0
         ? "unavailable"
-        : failedAuth.length > 0 && passedAuth.length > 0
+        : failedAuth.length > 0 && (passedAuth.length > 0 || unalignedPass)
           ? "mixed"
           : failedAuth.length > 0
             ? "fail"
-            : passedAuth.length === knownAuth.length
+            : passedAuth.length === knownAuth.length && !unalignedPass
               ? "pass"
               : "mixed";
 
@@ -659,6 +686,18 @@ export async function analyzeMessage(
   );
   const dkimFailed = authChecks.some(
     (check) => check.mechanism === "dkim" && check.status === "fail",
+  );
+  const spfUnaligned = authChecks.some(
+    (check) =>
+      check.mechanism === "spf" &&
+      check.status === "pass" &&
+      check.aligned === false,
+  );
+  const dkimUnaligned = authChecks.some(
+    (check) =>
+      check.mechanism === "dkim" &&
+      check.status === "pass" &&
+      check.aligned === false,
   );
   const factors: RiskFactor[] = [
     makeFactor(
@@ -718,11 +757,25 @@ export async function analyzeMessage(
       spfFailed ? "Pasted Authentication-Results report SPF failure." : "No reported SPF failure.",
     ),
     makeFactor(
+      "spf-unaligned",
+      "SPF passed but is not aligned",
+      8,
+      spfUnaligned,
+      spfUnaligned ? "SPF passed, but its authenticated domain does not align with the From domain." : "No unaligned SPF pass found.",
+    ),
+    makeFactor(
       "dkim-failure",
       "DKIM failed",
       8,
       dkimFailed,
       dkimFailed ? "Pasted Authentication-Results report DKIM failure." : "No reported DKIM failure.",
+    ),
+    makeFactor(
+      "dkim-unaligned",
+      "DKIM passed but is not aligned",
+      8,
+      dkimUnaligned,
+      dkimUnaligned ? "DKIM passed, but its signing domain does not align with the From domain." : "No unaligned DKIM pass found.",
     ),
     makeFactor(
       "many-links",
