@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Phish Intake Analyzer"
+description = "A mobile-friendly security tool for triaging suspicious SMS messages and raw emails. It extracts and defangs indicators, checks email authentication, scores risk, and generates an analyst-ready incident ticket."
+version = "1.0.0"
+id = "artifacts/phish-intake-analyzer"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24237
+
+[services.development]
+run = "pnpm --filter @workspace/phish-intake-analyzer run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/phish-intake-analyzer", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/phish-intake-analyzer/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24237"
+BASE_PATH = "/"

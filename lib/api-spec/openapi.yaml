@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: analysis
+    description: Suspicious message and email analysis
 paths:
   /healthz:
     get:
@@ -24,6 +26,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /analysis/providers:
+    get:
+      operationId: getAnalysisProviders
+      tags: [analysis]
+      summary: Get configured reputation providers
+      responses:
+        "200":
+          description: Provider availability
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderStatus"
+  /analysis:
+    post:
+      operationId: analyzeContent
+      tags: [analysis]
+      summary: Analyze an SMS or raw email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyzeInput"
+      responses:
+        "200":
+          description: Analysis completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisResult"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +71,143 @@ components:
           type: string
       required:
         - status
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+    AnalyzeInput:
+      type: object
+      properties:
+        source:
+          type: string
+          enum: [sms, email]
+        content:
+          type: string
+          minLength: 1
+          maxLength: 100000
+      required: [source, content]
+    ProviderStatus:
+      type: object
+      properties:
+        configured:
+          type: boolean
+        provider:
+          type: ["string", "null"]
+          enum: [virustotal, google_safe_browsing, null]
+      required: [configured, provider]
+    AnalysisResult:
+      type: object
+      properties:
+        source:
+          type: string
+          enum: [sms, email]
+        analyzedAt:
+          type: string
+          format: date-time
+        riskScore:
+          type: integer
+          minimum: 0
+          maximum: 100
+        riskLevel:
+          type: string
+          enum: [low, moderate, high, critical]
+        summary:
+          type: string
+        indicators:
+          type: array
+          items:
+            $ref: "#/components/schemas/Indicator"
+        urgencyFlags:
+          type: array
+          items:
+            type: string
+        authChecks:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuthCheck"
+        authOverall:
+          type: string
+          enum: [not_applicable, pass, mixed, fail, unavailable]
+        factors:
+          type: array
+          items:
+            $ref: "#/components/schemas/RiskFactor"
+        findings:
+          type: array
+          items:
+            type: string
+        reputationConfigured:
+          type: boolean
+        reputationProvider:
+          type: ["string", "null"]
+          enum: [virustotal, google_safe_browsing, null]
+      required:
+        - source
+        - analyzedAt
+        - riskScore
+        - riskLevel
+        - summary
+        - indicators
+        - urgencyFlags
+        - authChecks
+        - authOverall
+        - factors
+        - findings
+        - reputationConfigured
+        - reputationProvider
+    Indicator:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum: [url, domain, ip, phone]
+        value:
+          type: string
+        reputation:
+          type: string
+          enum: [safe, suspicious, malicious, unknown]
+        reputationDetail:
+          type: string
+        redirectChain:
+          type: array
+          items:
+            type: string
+        shortener:
+          type: boolean
+        anchorMismatch:
+          type: boolean
+      required: [kind, value, reputation, reputationDetail, redirectChain, shortener, anchorMismatch]
+    AuthCheck:
+      type: object
+      properties:
+        mechanism:
+          type: string
+          enum: [spf, dkim, dmarc]
+        status:
+          type: string
+          enum: [pass, fail, neutral, unknown]
+        aligned:
+          type: ["boolean", "null"]
+        domain:
+          type: ["string", "null"]
+        detail:
+          type: string
+      required: [mechanism, status, aligned, domain, detail]
+    RiskFactor:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        points:
+          type: integer
+          minimum: 0
+        triggered:
+          type: boolean
+        detail:
+          type: string
+      required: [id, label, points, triggered, detail]
 
