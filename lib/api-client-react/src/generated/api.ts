@@ -144,7 +144,7 @@ export const getGetAnalysisProvidersUrl = () => {
 }
 
 /**
- * @summary Get configured reputation providers
+ * @summary Get configured reputation and transcription providers
  */
 export const getAnalysisProviders = async ( options?: Parameters<typeof customFetch>[1]): Promise<ProviderStatus> => {
 
@@ -191,7 +191,7 @@ export type GetAnalysisProvidersQueryError = ErrorType<unknown>
 
 
 /**
- * @summary Get configured reputation providers
+ * @summary Get configured reputation and transcription providers
  */
 
 export function useGetAnalysisProviders<TData = Awaited<ReturnType<typeof getAnalysisProviders>>, TError = ErrorType<unknown>>(

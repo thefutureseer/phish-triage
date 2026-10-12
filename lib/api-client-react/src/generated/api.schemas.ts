@@ -56,7 +56,6 @@ export type VoiceTriageResultTranscriptionMode = typeof VoiceTriageResultTranscr
 export const VoiceTriageResultTranscriptionMode = {
   provided: 'provided',
   openai_whisper: 'openai_whisper',
-  mock_fallback: 'mock_fallback',
 } as const;
 
 export type VoiceTriageResultRiskLevel = typeof VoiceTriageResultRiskLevel[keyof typeof VoiceTriageResultRiskLevel];
@@ -127,6 +126,7 @@ export interface ProviderStatus {
   configured: boolean;
   /** @nullable */
   provider: ProviderStatusProvider;
+  voiceTranscriptionConfigured: boolean;
 }
 
 export type AnalysisResultSource = typeof AnalysisResultSource[keyof typeof AnalysisResultSource];

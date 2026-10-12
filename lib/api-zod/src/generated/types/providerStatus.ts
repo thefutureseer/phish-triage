@@ -11,4 +11,5 @@ export interface ProviderStatus {
   configured: boolean;
   /** @nullable */
   provider: ProviderStatusProvider;
+  voiceTranscriptionConfigured: boolean;
 }

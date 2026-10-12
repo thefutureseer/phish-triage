@@ -18,6 +18,7 @@ router.get("/analysis/providers", (_req, res): void => {
     GetAnalysisProvidersResponse.parse({
       configured: provider !== null,
       provider,
+      voiceTranscriptionConfigured: Boolean(process.env.OPENAI_API_KEY),
     }),
   );
 });

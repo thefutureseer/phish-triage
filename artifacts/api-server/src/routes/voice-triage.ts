@@ -6,7 +6,6 @@ import {
 } from "@workspace/api-zod";
 import {
   analyzeVoiceTranscript,
-  getMockAudioTranscript,
   transcribeWithWhisper,
   VoiceTranscriptionError,
 } from "../lib/voice-triage";
@@ -95,40 +94,36 @@ router.post(
       return;
     }
 
-    let transcript: string;
-    let transcriptionMode: "openai_whisper" | "mock_fallback";
     const apiKey = process.env.OPENAI_API_KEY;
-
-    if (apiKey) {
-      try {
-        transcript = await transcribeWithWhisper(req.file, apiKey);
-        transcriptionMode = "openai_whisper";
-      } catch (error) {
-        if (error instanceof VoiceTranscriptionError) {
-          req.log.warn(
-            { upstreamStatus: error.upstreamStatus },
-            "Whisper transcription failed",
-          );
-          res.status(502).json({ error: error.message });
-          return;
-        }
-        req.log.error({ err: error }, "Unexpected voice transcription failure");
-        res.status(502).json({
-          error: "Audio transcription failed. Try again or paste a transcript.",
-        });
-        return;
-      }
-    } else {
-      transcript = getMockAudioTranscript();
-      transcriptionMode = "mock_fallback";
-      req.log.info("OPENAI_API_KEY is not configured; using labelled mock transcript");
+    if (!apiKey) {
+      res.status(503).json({
+        error: "Audio transcription is not enabled yet. Paste a transcript instead.",
+      });
+      return;
     }
 
-    res.json(
-      TriageVoiceResponse.parse(
-        analyzeVoiceTranscript(transcript, transcriptionMode),
-      ),
-    );
+    try {
+      const transcript = await transcribeWithWhisper(req.file, apiKey);
+      res.json(
+        TriageVoiceResponse.parse(
+          analyzeVoiceTranscript(transcript, "openai_whisper"),
+        ),
+      );
+    } catch (error) {
+      if (error instanceof VoiceTranscriptionError) {
+        req.log.warn(
+          { upstreamStatus: error.upstreamStatus },
+          "Whisper transcription failed",
+        );
+        res.status(502).json({ error: error.message });
+        return;
+      }
+      req.log.error({ err: error }, "Unexpected voice transcription failure");
+      res.status(502).json({
+        error: "Audio transcription failed. Try again or paste a transcript.",
+      });
+      return;
+    }
   },
 );
 

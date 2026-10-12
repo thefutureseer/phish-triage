@@ -30,7 +30,7 @@ paths:
     get:
       operationId: getAnalysisProviders
       tags: [analysis]
-      summary: Get configured reputation providers
+      summary: Get configured reputation and transcription providers
       responses:
         "200":
           description: Provider availability
@@ -107,6 +107,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          description: Audio transcription is not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   schemas:
     HealthStatus:
@@ -160,7 +166,7 @@ components:
           format: date-time
         transcriptionMode:
           type: string
-          enum: [provided, openai_whisper, mock_fallback]
+          enum: [provided, openai_whisper]
         transcript:
           type: string
           maxLength: 100000
@@ -219,7 +225,9 @@ components:
         provider:
           type: ["string", "null"]
           enum: [virustotal, google_safe_browsing, null]
-      required: [configured, provider]
+        voiceTranscriptionConfigured:
+          type: boolean
+      required: [configured, provider, voiceTranscriptionConfigured]
     AnalysisResult:
       type: object
       properties:

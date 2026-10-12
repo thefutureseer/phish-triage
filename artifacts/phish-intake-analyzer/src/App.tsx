@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAnalyzeContent, useGetAnalysisProviders, useHealthCheck, useTriageVoice, getGetAnalysisProvidersQueryKey, getHealthCheckQueryKey, type AnalysisResult, type VoiceTriageResult } from '@workspace/api-client-react';
-import { AlertTriangle, ArrowRight, Check, ChevronRight, Clipboard, FileText, Fingerprint, Globe2, LoaderCircle, Mail, MessageSquareText, Mic, RotateCcw, ScanSearch, Shield, ShieldAlert, ShieldCheck, Upload } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, ChevronRight, Clipboard, FileText, Fingerprint, Globe2, LoaderCircle, Mail, MessageSquareText, Mic, RotateCcw, ScanSearch, Shield, ShieldAlert, ShieldCheck, Upload } from 'lucide-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -77,9 +77,6 @@ function makeVoiceReport(result: VoiceTriageResult): string {
     '- **Source:** VOICE / VISHING',
     `- **Analyzed:** ${new Date(result.analyzedAt).toLocaleString()}`,
     `- **Transcription:** ${result.transcriptionMode.replaceAll('_', ' ')}`,
-    ...(result.transcriptionMode === 'mock_fallback'
-      ? ['- **Notice:** The mock sample transcript was not derived from the uploaded audio.']
-      : []),
     `- **Risk assessment:** ${result.riskLevel.toUpperCase()} (${result.riskScore}/100)`,
     `- **Summary:** ${result.summary}`,
     '',
@@ -114,7 +111,7 @@ function isVoiceTriageResult(value: unknown): value is VoiceTriageResult {
   const item = value as Partial<VoiceTriageResult>;
   return item.source === 'voice'
     && typeof item.analyzedAt === 'string'
-    && ['provided', 'openai_whisper', 'mock_fallback'].includes(String(item.transcriptionMode))
+    && ['provided', 'openai_whisper'].includes(String(item.transcriptionMode))
     && typeof item.transcript === 'string'
     && typeof item.riskScore === 'number' && item.riskScore >= 0 && item.riskScore <= 100
     && ['low', 'moderate', 'high', 'critical'].includes(String(item.riskLevel))
@@ -155,17 +152,10 @@ function VoiceResultView({ result, onCopy, copied }: { result: VoiceTriageResult
       <div className="result-kicker">Voice triage assessment</div>
       <RiskScore result={result} />
       <p className="summary-copy">{result.summary}</p>
-      {result.transcriptionMode === 'mock_fallback' ? (
-        <div className="provider-callout" role="note" data-testid="status-voice-mock-fallback">
-          <AlertTriangle size={15} />
-          <span>Mock transcription fallback. The sample transcript shown here was not derived from the uploaded audio.</span>
-        </div>
-      ) : (
-        <div className="provider-callout configured" role="note">
-          <Mic size={15} />
-          <span>Transcript source: {result.transcriptionMode === 'openai_whisper' ? 'audio transcription' : 'provided transcript'}.</span>
-        </div>
-      )}
+      <div className="provider-callout configured" role="note">
+        <Mic size={15} />
+        <span>Transcript source: {result.transcriptionMode === 'openai_whisper' ? 'audio transcription' : 'provided transcript'}.</span>
+      </div>
       <section className="result-section" aria-labelledby="voice-transcript-title">
         <div className="section-title" id="voice-transcript-title"><span>Call transcript</span><span className="count-pill">{result.transcript.length.toLocaleString()} chars</span></div>
         <pre className="transcript-output" data-testid="text-voice-transcript">{result.transcript || 'No transcript was returned.'}</pre>
@@ -207,7 +197,7 @@ function VoiceResultView({ result, onCopy, copied }: { result: VoiceTriageResult
   );
 }
 
-function AnalysisResultView({ result, onCopy, copied }: { result: AnalysisResult; onCopy: () => void; copied: boolean }) {
+function AnalysisResultView({ result, onCopy, copied, onOpenReputation }: { result: AnalysisResult; onCopy: () => void; copied: boolean; onOpenReputation: () => void }) {
   const authLabel = result.authOverall.replaceAll('_', ' ');
   return (
     <div className="fade-in" data-testid="content-analysis-result">
@@ -222,6 +212,7 @@ function AnalysisResultView({ result, onCopy, copied }: { result: AnalysisResult
             ? `Reputation lookup enabled via ${(result.reputationProvider ?? 'configured provider').replaceAll('_', ' ')}. Heuristic analysis is not a guarantee.`
             : 'External reputation lookups are not configured. This result uses local heuristic analysis only; no reputation verdicts were checked.'}
         </span>
+        {!result.reputationConfigured && <button type="button" className="provider-action" onClick={onOpenReputation} data-testid="button-coming-soon-reputation">Coming soon <ArrowRight size={12} /></button>}
       </div>
 
       {result.urgencyFlags.length > 0 && (
@@ -322,7 +313,42 @@ function AnalysisResultView({ result, onCopy, copied }: { result: AnalysisResult
   );
 }
 
+function ComingSoonPage() {
+  const [location, setLocation] = useLocation();
+  const isAudio = location.endsWith('/audio-transcription');
+  const featureTitle = isAudio ? 'Audio transcription' : 'External URL reputation';
+  const featureCopy = isAudio
+    ? 'Transcribing uploaded call recordings needs a speech-to-text provider connection. Until then, paste a transcript to run vishing analysis.'
+    : 'Live URL reputation checks need a VirusTotal or Google Safe Browsing connection. SMS and email analysis still works with local heuristic checks.';
+  const requirement = isAudio
+    ? 'Audio upload requires an enabled transcription API.'
+    : 'External lookups require an enabled reputation API.';
+  return (
+    <main className="app-shell">
+      <header className="topbar">
+        <div className="topbar-brand">
+          <span className="brand-mark"><Shield size={19} strokeWidth={1.8} /></span>
+          <span>Phish Intake <span style={{ color: '#9dd8be' }}>Analyzer</span></span>
+        </div>
+        <button type="button" className="topbar-action" onClick={() => setLocation('/')}>Back to analyzer</button>
+      </header>
+      <div className="workbench coming-soon-workbench">
+        <section className="panel coming-soon-panel" aria-labelledby="coming-soon-title">
+          <div className="coming-soon-icon">{isAudio ? <Mic size={21} /> : <Globe2 size={21} />}</div>
+          <div className="eyebrow">INTEGRATION STATUS · NOT CONFIGURED</div>
+          <h1 id="coming-soon-title">Coming soon</h1>
+          <h2>{featureTitle}</h2>
+          <p>{featureCopy}</p>
+          <div className="coming-soon-requirement"><AlertTriangle size={15} /><span>{requirement}</span></div>
+          <button type="button" className="analyze-button" onClick={() => setLocation('/')}><ArrowLeft size={15} />Return to analyzer</button>
+        </section>
+      </div>
+    </main>
+  );
+}
+
 function Home() {
+  const [, setLocation] = useLocation();
   const [mode, setMode] = useState<'sms' | 'email' | 'voice'>('sms');
   const [content, setContent] = useState('');
   const [voiceInputMode, setVoiceInputMode] = useState<'transcript' | 'audio'>('transcript');
@@ -388,6 +414,10 @@ function Home() {
       if (!transcript.trim() || transcript.length > 100000) return;
       setUploadedVoiceResult(null);
       voiceAnalysis.mutate({ data: { transcript: transcript.trim() } });
+      return;
+    }
+    if (providerQuery.data?.voiceTranscriptionConfigured !== true) {
+      setLocation('/coming-soon/audio-transcription');
       return;
     }
     if (!audioFile || !validAudio(audioFile)) return;
@@ -487,7 +517,11 @@ function Home() {
         <div className="topbar-meta" aria-label="Service status">
           <span className="meta-label"><span className="live-dot" />{healthQuery.isLoading ? 'CHECKING' : healthQuery.isError ? 'STATUS UNKNOWN' : serviceStatus?.toUpperCase() ?? 'ONLINE'}</span>
           <span style={{ opacity: .5 }}>/</span>
-          <span>{providerQuery.isLoading ? 'LOOKUP STATUS…' : provider?.configured ? 'REPUTATION ENABLED' : 'HEURISTICS ONLY'}</span>
+          {providerQuery.isLoading
+                ? <span>LOOKUP STATUS…</span>
+                : provider?.configured
+                  ? <span>REPUTATION ENABLED</span>
+                  : <button type="button" className="topbar-action topbar-status-action" onClick={() => setLocation('/coming-soon/reputation')}>HEURISTICS ONLY · COMING SOON</button>}
         </div>
       </header>
 
@@ -519,7 +553,16 @@ function Home() {
                     <div><strong>Voice / Vishing Triage</strong><span>Assess pressure tactics and suspicious payment requests in a call.</span></div>
                   </div>
                   <div className="voice-choice" role="group" aria-label="Voice evidence type">
-                    <button type="button" aria-pressed={voiceInputMode === 'audio'} className={`voice-choice-button ${voiceInputMode === 'audio' ? 'active' : ''}`} onClick={() => { setVoiceInputMode('audio'); setUploadedVoiceResult(null); voiceAnalysis.reset(); setFileError(''); }} data-testid="tab-voice-audio"><Upload size={14} />Upload Call Audio</button>
+                    <button type="button" aria-pressed={voiceInputMode === 'audio'} className={`voice-choice-button ${voiceInputMode === 'audio' ? 'active' : ''}`} disabled={providerQuery.isLoading} onClick={() => {
+                      if (provider?.voiceTranscriptionConfigured !== true) {
+                        setLocation('/coming-soon/audio-transcription');
+                        return;
+                      }
+                      setVoiceInputMode('audio');
+                      setUploadedVoiceResult(null);
+                      voiceAnalysis.reset();
+                      setFileError('');
+                    }} data-testid="tab-voice-audio"><Upload size={14} />Upload Call Audio{(providerQuery.isError || (provider && !provider.voiceTranscriptionConfigured)) && <span className="choice-soon">Coming soon</span>}</button>
                     <button type="button" aria-pressed={voiceInputMode === 'transcript'} className={`voice-choice-button ${voiceInputMode === 'transcript' ? 'active' : ''}`} onClick={() => { setVoiceInputMode('transcript'); setUploadedVoiceResult(null); voiceAnalysis.reset(); setFileError(''); }} data-testid="tab-voice-transcript"><FileText size={14} />Paste Transcript</button>
                   </div>
                   {voiceInputMode === 'transcript' ? (
@@ -608,13 +651,17 @@ function Home() {
             ) : mode === 'voice' && shownVoiceResult ? (
               <VoiceResultView result={shownVoiceResult} onCopy={copyReport} copied={copied} />
             ) : mode !== 'voice' && result ? (
-              <AnalysisResultView result={result} onCopy={copyReport} copied={copied} />
+              <AnalysisResultView result={result} onCopy={copyReport} copied={copied} onOpenReputation={() => setLocation('/coming-soon/reputation')} />
             ) : (
               <div className="empty-result" data-testid="content-empty-result">
                 <div className="empty-graphic"><Fingerprint size={34} strokeWidth={1.4} /></div>
                 <h3>{mode === 'voice' ? 'Listen for pressure.' : 'Evidence goes here.'}</h3>
                 <p>{mode === 'voice' ? 'Submit a call recording or transcript to surface authority claims, urgency, and high-risk demands.' : 'Submit a suspicious message to see its risk signals, extracted indicators, and analyst-ready report.'}</p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 21, color: '#84908a', font: '10px var(--app-font-mono)' }}><Globe2 size={13} />{providerQuery.isLoading ? 'Checking reputation provider…' : provider?.configured ? `LOOKUPS · ${(provider.provider ?? '').replaceAll('_', ' ').toUpperCase()}` : 'NO EXTERNAL REPUTATION LOOKUPS'}</div>
+                {providerQuery.isLoading
+                  ? <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 21, color: '#84908a', font: '10px var(--app-font-mono)' }}><Globe2 size={13} />Checking reputation provider…</div>
+                  : provider?.configured
+                    ? <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 21, color: '#84908a', font: '10px var(--app-font-mono)' }}><Globe2 size={13} />{`LOOKUPS · ${(provider.provider ?? '').replaceAll('_', ' ').toUpperCase()}`}</div>
+                    : <button type="button" className="empty-provider-action" onClick={() => setLocation('/coming-soon/reputation')}><Globe2 size={13} />NO EXTERNAL REPUTATION LOOKUPS · COMING SOON</button>}
               </div>
             )}
           </section>
@@ -626,7 +673,7 @@ function Home() {
 }
 
 function Router() {
-  return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>;
+  return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route path="/coming-soon/:feature" component={ComingSoonPage} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>;
 }
 
 function RoutedErrorBoundary({ children }: { children: ReactNode }) {

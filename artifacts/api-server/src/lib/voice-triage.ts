@@ -5,8 +5,6 @@ import {
   type VoiceTriageResultTranscriptionMode,
 } from "@workspace/api-zod";
 
-const MOCK_AUDIO_TRANSCRIPT =
-  "This is the bank fraud desk. Your account is frozen, so take immediate action. Buy a gift card and read me the one-time passcode to restore access.";
 const MAX_TRANSCRIPT_LENGTH = 100_000;
 
 type VishingCategory =
@@ -176,10 +174,6 @@ export function analyzeVoiceTranscript(
     factors,
     findings,
   });
-}
-
-export function getMockAudioTranscript(): string {
-  return MOCK_AUDIO_TRANSCRIPT;
 }
 
 export async function transcribeWithWhisper(

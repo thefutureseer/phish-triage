@@ -1,0 +1,1 @@
+- [Key-gated integrations](key-gated-integrations.md) — Missing service keys should route feature clicks to Coming Soon, not fabricated results.

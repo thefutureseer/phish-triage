@@ -18,11 +18,12 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
- * @summary Get configured reputation providers
+ * @summary Get configured reputation and transcription providers
  */
 export const GetAnalysisProvidersResponse = zod.object({
   "configured": zod.boolean(),
-  "provider": zod.union([zod.literal('virustotal'),zod.literal('google_safe_browsing'),zod.literal(null)]).nullable()
+  "provider": zod.union([zod.literal('virustotal'),zod.literal('google_safe_browsing'),zod.literal(null)]).nullable(),
+  "voiceTranscriptionConfigured": zod.boolean()
 })
 
 
@@ -119,7 +120,7 @@ export const triageVoiceResponseFactorsItemPointsMin = 0;
 export const TriageVoiceResponse = zod.object({
   "source": zod.enum(['voice']),
   "analyzedAt": zod.coerce.date(),
-  "transcriptionMode": zod.enum(['provided', 'openai_whisper', 'mock_fallback']),
+  "transcriptionMode": zod.enum(['provided', 'openai_whisper']),
   "transcript": zod.string().max(triageVoiceResponseTranscriptMax),
   "riskScore": zod.number().int().min(triageVoiceResponseRiskScoreMin).max(triageVoiceResponseRiskScoreMax),
   "riskLevel": zod.enum(['low', 'moderate', 'high', 'critical']),

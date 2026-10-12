@@ -12,5 +12,4 @@ export type VoiceTriageResultTranscriptionMode = typeof VoiceTriageResultTranscr
 export const VoiceTriageResultTranscriptionMode = {
   provided: 'provided',
   openai_whisper: 'openai_whisper',
-  mock_fallback: 'mock_fallback',
 } as const;
