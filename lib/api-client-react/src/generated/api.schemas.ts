@@ -43,6 +43,139 @@ export interface VoiceAudioInput {
   audio: Blob;
 }
 
+export interface PhoneTriageInput {
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  phoneNumber: string;
+  /**
+     * @minLength 2
+     * @maxLength 2
+     * @pattern ^[A-Za-z]{2}$
+     */
+  defaultRegion: string;
+  /** @maxLength 120 */
+  claimedLocation?: string;
+}
+
+export type PhoneTriageResultSource = typeof PhoneTriageResultSource[keyof typeof PhoneTriageResultSource];
+
+
+export const PhoneTriageResultSource = {
+  phone: 'phone',
+} as const;
+
+export type PhoneTriageResultLineType = typeof PhoneTriageResultLineType[keyof typeof PhoneTriageResultLineType];
+
+
+export const PhoneTriageResultLineType = {
+  wireless: 'wireless',
+  landline: 'landline',
+  voip_virtual: 'voip_virtual',
+  other: 'other',
+  unknown: 'unknown',
+} as const;
+
+export type PhoneTriageResultLineTypeSource = typeof PhoneTriageResultLineTypeSource[keyof typeof PhoneTriageResultLineTypeSource];
+
+
+export const PhoneTriageResultLineTypeSource = {
+  google_libphonenumber: 'google_libphonenumber',
+  abstract_phone: 'abstract_phone',
+  unknown: 'unknown',
+} as const;
+
+export type PhoneTriageResultCarrierSource = typeof PhoneTriageResultCarrierSource[keyof typeof PhoneTriageResultCarrierSource];
+
+
+export const PhoneTriageResultCarrierSource = {
+  google_libphonenumber: 'google_libphonenumber',
+  abstract_phone: 'abstract_phone',
+  none: 'none',
+} as const;
+
+export type PhoneTriageResultExternalLookupStatus = typeof PhoneTriageResultExternalLookupStatus[keyof typeof PhoneTriageResultExternalLookupStatus];
+
+
+export const PhoneTriageResultExternalLookupStatus = {
+  success: 'success',
+  not_configured: 'not_configured',
+  unavailable: 'unavailable',
+  skipped_invalid: 'skipped_invalid',
+} as const;
+
+/**
+ * @nullable
+ */
+export type PhoneTriageResultExternalLookupProvider = typeof PhoneTriageResultExternalLookupProvider[keyof typeof PhoneTriageResultExternalLookupProvider] | null;
+
+
+export const PhoneTriageResultExternalLookupProvider = {
+  abstract_phone: 'abstract_phone',
+} as const;
+
+export type PhoneTriageResultRiskLevel = typeof PhoneTriageResultRiskLevel[keyof typeof PhoneTriageResultRiskLevel];
+
+
+export const PhoneTriageResultRiskLevel = {
+  low: 'low',
+  moderate: 'moderate',
+  high: 'high',
+  critical: 'critical',
+} as const;
+
+export interface PhoneRiskFactor {
+  id: string;
+  label: string;
+  /** @minimum 0 */
+  points: number;
+  triggered: boolean;
+  detail: string;
+}
+
+export interface PhoneTriageResult {
+  source: PhoneTriageResultSource;
+  analyzedAt: string;
+  submittedNumber: string;
+  e164: string;
+  nationalFormat: string;
+  isValid: boolean;
+  isPossible: boolean;
+  /** @nullable */
+  countryCode: string | null;
+  /** @nullable */
+  countryName: string | null;
+  countryCallingCode: string;
+  lineType: PhoneTriageResultLineType;
+  lineTypeSource: PhoneTriageResultLineTypeSource;
+  /** @nullable */
+  carrier: string | null;
+  carrierSource: PhoneTriageResultCarrierSource;
+  /** @nullable */
+  locationCity: string | null;
+  /** @nullable */
+  locationRegion: string | null;
+  /** @nullable */
+  locationCountry: string | null;
+  /** @nullable */
+  claimedLocation: string | null;
+  locationMismatch: boolean;
+  externalLookupStatus: PhoneTriageResultExternalLookupStatus;
+  /** @nullable */
+  externalLookupProvider: PhoneTriageResultExternalLookupProvider;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  riskScore: number;
+  riskLevel: PhoneTriageResultRiskLevel;
+  summary: string;
+  safetyRecommendation: string;
+  factors: PhoneRiskFactor[];
+  findings: string[];
+}
+
 export type VoiceTriageResultSource = typeof VoiceTriageResultSource[keyof typeof VoiceTriageResultSource];
 
 
@@ -122,11 +255,24 @@ export const ProviderStatusProvider = {
   google_safe_browsing: 'google_safe_browsing',
 } as const;
 
+/**
+ * @nullable
+ */
+export type ProviderStatusPhoneLookupProvider = typeof ProviderStatusPhoneLookupProvider[keyof typeof ProviderStatusPhoneLookupProvider] | null;
+
+
+export const ProviderStatusPhoneLookupProvider = {
+  abstract_phone: 'abstract_phone',
+} as const;
+
 export interface ProviderStatus {
   configured: boolean;
   /** @nullable */
   provider: ProviderStatusProvider;
   voiceTranscriptionConfigured: boolean;
+  phoneLookupConfigured: boolean;
+  /** @nullable */
+  phoneLookupProvider: ProviderStatusPhoneLookupProvider;
 }
 
 export type AnalysisResultSource = typeof AnalysisResultSource[keyof typeof AnalysisResultSource];

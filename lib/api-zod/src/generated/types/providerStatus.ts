@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ProviderStatusPhoneLookupProvider } from './providerStatusPhoneLookupProvider';
 import type { ProviderStatusProvider } from './providerStatusProvider';
 
 export interface ProviderStatus {
@@ -12,4 +13,7 @@ export interface ProviderStatus {
   /** @nullable */
   provider: ProviderStatusProvider;
   voiceTranscriptionConfigured: boolean;
+  phoneLookupConfigured: boolean;
+  /** @nullable */
+  phoneLookupProvider: ProviderStatusPhoneLookupProvider;
 }

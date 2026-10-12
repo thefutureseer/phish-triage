@@ -23,7 +23,9 @@ export const HealthCheckResponse = zod.object({
 export const GetAnalysisProvidersResponse = zod.object({
   "configured": zod.boolean(),
   "provider": zod.union([zod.literal('virustotal'),zod.literal('google_safe_browsing'),zod.literal(null)]).nullable(),
-  "voiceTranscriptionConfigured": zod.boolean()
+  "voiceTranscriptionConfigured": zod.boolean(),
+  "phoneLookupConfigured": zod.boolean(),
+  "phoneLookupProvider": zod.union([zod.literal('abstract_phone'),zod.literal(null)]).nullable()
 })
 
 
@@ -135,6 +137,70 @@ export const TriageVoiceResponse = zod.object({
   "id": zod.string(),
   "label": zod.string(),
   "points": zod.number().int().min(triageVoiceResponseFactorsItemPointsMin),
+  "triggered": zod.boolean(),
+  "detail": zod.string()
+})),
+  "findings": zod.array(zod.string())
+})
+
+
+/**
+ * @summary Parse and assess a phone number
+ */
+export const triagePhoneNumberBodyPhoneNumberMax = 80;
+
+export const triagePhoneNumberBodyDefaultRegionMin = 2;
+export const triagePhoneNumberBodyDefaultRegionMax = 2;
+
+
+export const triagePhoneNumberBodyDefaultRegionRegExp = new RegExp('^[A-Za-z]{2}$');
+export const triagePhoneNumberBodyClaimedLocationMax = 120;
+
+
+
+export const TriagePhoneNumberBody = zod.object({
+  "phoneNumber": zod.string().min(1).max(triagePhoneNumberBodyPhoneNumberMax),
+  "defaultRegion": zod.string().min(triagePhoneNumberBodyDefaultRegionMin).max(triagePhoneNumberBodyDefaultRegionMax).regex(triagePhoneNumberBodyDefaultRegionRegExp),
+  "claimedLocation": zod.string().max(triagePhoneNumberBodyClaimedLocationMax).optional()
+})
+
+export const triagePhoneNumberResponseRiskScoreMin = 0;
+export const triagePhoneNumberResponseRiskScoreMax = 100;
+
+export const triagePhoneNumberResponseFactorsItemPointsMin = 0;
+
+
+
+export const TriagePhoneNumberResponse = zod.object({
+  "source": zod.enum(['phone']),
+  "analyzedAt": zod.coerce.date(),
+  "submittedNumber": zod.string(),
+  "e164": zod.string(),
+  "nationalFormat": zod.string(),
+  "isValid": zod.boolean(),
+  "isPossible": zod.boolean(),
+  "countryCode": zod.string().nullable(),
+  "countryName": zod.string().nullable(),
+  "countryCallingCode": zod.string(),
+  "lineType": zod.enum(['wireless', 'landline', 'voip_virtual', 'other', 'unknown']),
+  "lineTypeSource": zod.enum(['google_libphonenumber', 'abstract_phone', 'unknown']),
+  "carrier": zod.string().nullable(),
+  "carrierSource": zod.enum(['google_libphonenumber', 'abstract_phone', 'none']),
+  "locationCity": zod.string().nullable(),
+  "locationRegion": zod.string().nullable(),
+  "locationCountry": zod.string().nullable(),
+  "claimedLocation": zod.string().nullable(),
+  "locationMismatch": zod.boolean(),
+  "externalLookupStatus": zod.enum(['success', 'not_configured', 'unavailable', 'skipped_invalid']),
+  "externalLookupProvider": zod.union([zod.literal('abstract_phone'),zod.literal(null)]).nullable(),
+  "riskScore": zod.number().int().min(triagePhoneNumberResponseRiskScoreMin).max(triagePhoneNumberResponseRiskScoreMax),
+  "riskLevel": zod.enum(['low', 'moderate', 'high', 'critical']),
+  "summary": zod.string(),
+  "safetyRecommendation": zod.string(),
+  "factors": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "points": zod.number().int().min(triagePhoneNumberResponseFactorsItemPointsMin),
   "triggered": zod.boolean(),
   "detail": zod.string()
 })),

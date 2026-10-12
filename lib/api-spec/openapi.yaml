@@ -113,6 +113,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /triage/phone:
+    post:
+      operationId: triagePhoneNumber
+      tags: [analysis]
+      summary: Parse and assess a phone number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PhoneTriageInput"
+      responses:
+        "200":
+          description: Phone number assessment completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PhoneTriageResult"
+        "400":
+          description: Invalid phone number input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   schemas:
     HealthStatus:
@@ -155,6 +179,136 @@ components:
           format: binary
           description: MP3, WAV, or M4A audio, up to 24 MiB
       required: [audio]
+    PhoneTriageInput:
+      type: object
+      properties:
+        phoneNumber:
+          type: string
+          minLength: 1
+          maxLength: 80
+        defaultRegion:
+          type: string
+          minLength: 2
+          maxLength: 2
+          pattern: "^[A-Za-z]{2}$"
+        claimedLocation:
+          type: string
+          maxLength: 120
+      required: [phoneNumber, defaultRegion]
+    PhoneTriageResult:
+      type: object
+      properties:
+        source:
+          type: string
+          enum: [phone]
+        analyzedAt:
+          type: string
+          format: date-time
+        submittedNumber:
+          type: string
+        e164:
+          type: string
+        nationalFormat:
+          type: string
+        isValid:
+          type: boolean
+        isPossible:
+          type: boolean
+        countryCode:
+          type: ["string", "null"]
+        countryName:
+          type: ["string", "null"]
+        countryCallingCode:
+          type: string
+        lineType:
+          type: string
+          enum: [wireless, landline, voip_virtual, other, unknown]
+        lineTypeSource:
+          type: string
+          enum: [google_libphonenumber, abstract_phone, unknown]
+        carrier:
+          type: ["string", "null"]
+        carrierSource:
+          type: string
+          enum: [google_libphonenumber, abstract_phone, none]
+        locationCity:
+          type: ["string", "null"]
+        locationRegion:
+          type: ["string", "null"]
+        locationCountry:
+          type: ["string", "null"]
+        claimedLocation:
+          type: ["string", "null"]
+        locationMismatch:
+          type: boolean
+        externalLookupStatus:
+          type: string
+          enum: [success, not_configured, unavailable, skipped_invalid]
+        externalLookupProvider:
+          type: ["string", "null"]
+          enum: [abstract_phone, null]
+        riskScore:
+          type: integer
+          minimum: 0
+          maximum: 100
+        riskLevel:
+          type: string
+          enum: [low, moderate, high, critical]
+        summary:
+          type: string
+        safetyRecommendation:
+          type: string
+        factors:
+          type: array
+          items:
+            $ref: "#/components/schemas/PhoneRiskFactor"
+        findings:
+          type: array
+          items:
+            type: string
+      required:
+        - source
+        - analyzedAt
+        - submittedNumber
+        - e164
+        - nationalFormat
+        - isValid
+        - isPossible
+        - countryCode
+        - countryName
+        - countryCallingCode
+        - lineType
+        - lineTypeSource
+        - carrier
+        - carrierSource
+        - locationCity
+        - locationRegion
+        - locationCountry
+        - claimedLocation
+        - locationMismatch
+        - externalLookupStatus
+        - externalLookupProvider
+        - riskScore
+        - riskLevel
+        - summary
+        - safetyRecommendation
+        - factors
+        - findings
+    PhoneRiskFactor:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        points:
+          type: integer
+          minimum: 0
+        triggered:
+          type: boolean
+        detail:
+          type: string
+      required: [id, label, points, triggered, detail]
     VoiceTriageResult:
       type: object
       properties:
@@ -227,7 +381,12 @@ components:
           enum: [virustotal, google_safe_browsing, null]
         voiceTranscriptionConfigured:
           type: boolean
-      required: [configured, provider, voiceTranscriptionConfigured]
+        phoneLookupConfigured:
+          type: boolean
+        phoneLookupProvider:
+          type: ["string", "null"]
+          enum: [abstract_phone, null]
+      required: [configured, provider, voiceTranscriptionConfigured, phoneLookupConfigured, phoneLookupProvider]
     AnalysisResult:
       type: object
       properties:

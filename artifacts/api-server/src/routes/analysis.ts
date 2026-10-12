@@ -19,6 +19,8 @@ router.get("/analysis/providers", (_req, res): void => {
       configured: provider !== null,
       provider,
       voiceTranscriptionConfigured: Boolean(process.env.OPENAI_API_KEY),
+      phoneLookupConfigured: Boolean(process.env.ABSTRACT_PHONE_KEY),
+      phoneLookupProvider: process.env.ABSTRACT_PHONE_KEY ? "abstract_phone" : null,
     }),
   );
 });

@@ -1,7 +1,8 @@
 import { useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useAnalyzeContent, useGetAnalysisProviders, useHealthCheck, useTriageVoice, getGetAnalysisProvidersQueryKey, getHealthCheckQueryKey, type AnalysisResult, type VoiceTriageResult } from '@workspace/api-client-react';
-import { AlertTriangle, ArrowLeft, ArrowRight, Check, ChevronRight, Clipboard, FileText, Fingerprint, Globe2, LoaderCircle, Mail, MessageSquareText, Mic, RotateCcw, ScanSearch, Shield, ShieldAlert, ShieldCheck, Upload } from 'lucide-react';
+import { useAnalyzeContent, useGetAnalysisProviders, useHealthCheck, useTriagePhoneNumber, useTriageVoice, getGetAnalysisProvidersQueryKey, getHealthCheckQueryKey, type AnalysisResult, type PhoneTriageResult, type VoiceTriageResult } from '@workspace/api-client-react';
+import { AsYouType, getCountries, getCountryCallingCode, parsePhoneNumberFromString, type CountryCode } from 'libphonenumber-js';
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, ChevronRight, Clipboard, FileText, Fingerprint, Globe2, LoaderCircle, Mail, MapPin, MessageSquareText, Mic, Phone, Radio, RotateCcw, ScanSearch, Shield, ShieldAlert, ShieldCheck, Upload } from 'lucide-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -9,6 +10,19 @@ import NotFound from '@/pages/not-found';
 import { Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
 
 const queryClient = new QueryClient();
+const phoneRegionNames = new Intl.DisplayNames(['en'], { type: 'region' });
+const phoneRegions = getCountries()
+  .map((code) => ({ code, name: phoneRegionNames.of(code) ?? code }))
+  .sort((left, right) => left.name.localeCompare(right.name));
+
+function formatPhoneAsYouType(value: string, region: CountryCode): string {
+  const formatter = value.trimStart().startsWith('+') ? new AsYouType() : new AsYouType(region);
+  return formatter.input(value);
+}
+
+function parsePhonePreview(value: string, region: CountryCode) {
+  return parsePhoneNumberFromString(value, value.trimStart().startsWith('+') ? undefined : region);
+}
 
 function makeReport(result: AnalysisResult): string {
   const date = new Date(result.analyzedAt).toLocaleString();
@@ -106,6 +120,38 @@ function makeVoiceReport(result: VoiceTriageResult): string {
   ].join('\n');
 }
 
+function makePhoneReport(result: PhoneTriageResult): string {
+  const externalStatus = result.externalLookupStatus.replaceAll('_', ' ');
+  return [
+    '# Phone Number OSINT Incident Ticket',
+    '',
+    '- **Source:** PHONE LOOKUP',
+    `- **Analyzed:** ${new Date(result.analyzedAt).toLocaleString()}`,
+    `- **Risk assessment:** ${result.riskLevel.toUpperCase()} (${result.riskScore}/100)`,
+    `- **E.164:** ${result.e164}`,
+    `- **Number validity:** ${result.isValid ? 'valid' : 'not confirmed'} (${result.isPossible ? 'possible length' : 'impossible length'})`,
+    `- **Line type:** ${result.lineType.replaceAll('_', ' ')} (${result.lineTypeSource.replaceAll('_', ' ')})`,
+    `- **Original carrier:** ${result.carrier ?? 'Not available'}`,
+    `- **Carrier source:** ${result.carrierSource.replaceAll('_', ' ')}`,
+    `- **Number region:** ${[result.locationCity, result.locationRegion, result.locationCountry].filter(Boolean).join(', ') || 'Not available'}`,
+    `- **Claimed caller location:** ${result.claimedLocation ?? 'Not provided'}`,
+    `- **Location mismatch:** ${result.locationMismatch ? 'Flagged' : 'Not detected'}`,
+    `- **Live lookup:** ${result.externalLookupProvider ?? 'none'} — ${externalStatus}`,
+    `- **Summary:** ${result.summary}`,
+    '',
+    '## Safety recommendation',
+    result.safetyRecommendation,
+    '',
+    '## Findings',
+    ...result.findings.map((finding) => `- ${finding}`),
+    '',
+    '## Risk factors',
+    ...result.factors.map((factor) => `- ${factor.triggered ? '[x]' : '[ ]'} **${factor.label}** (${factor.points} points): ${factor.detail}`),
+    '',
+    '> Phone-number metadata does not verify caller identity or prove fraud. Numbers can be ported, reassigned, or spoofed; confirm claims through an independent trusted channel.',
+  ].join('\n');
+}
+
 function isVoiceTriageResult(value: unknown): value is VoiceTriageResult {
   if (!value || typeof value !== 'object') return false;
   const item = value as Partial<VoiceTriageResult>;
@@ -127,7 +173,7 @@ function isVoiceTriageResult(value: unknown): value is VoiceTriageResult {
     && Array.isArray(item.findings) && item.findings.every((finding) => typeof finding === 'string');
 }
 
-function RiskScore({ result }: { result: Pick<AnalysisResult | VoiceTriageResult, 'riskLevel' | 'riskScore'> }) {
+function RiskScore({ result }: { result: Pick<AnalysisResult | VoiceTriageResult | PhoneTriageResult, 'riskLevel' | 'riskScore'> }) {
   const level = result.riskLevel;
   return (
     <div className="score-row" data-testid="status-risk-score">
@@ -187,6 +233,94 @@ function VoiceResultView({ result, onCopy, copied }: { result: VoiceTriageResult
             <span className="factor-points">{factor.triggered ? '+' : ''}{factor.points}</span>
           </div>
         )) : <p className="indicator-detail">No scoring factors were returned.</p>}
+      </section>
+      <button type="button" className={`report-button ${copied ? 'copied' : ''}`} onClick={onCopy} data-testid="button-copy-report">
+        {copied ? <Check size={15} /> : <Clipboard size={15} />}
+        {copied ? 'Incident ticket copied' : 'Copy Incident Ticket'}
+      </button>
+      <div className="result-meta">ANALYZED {new Date(result.analyzedAt).toLocaleString()}</div>
+    </div>
+  );
+}
+
+function PhoneResultView({ result, onCopy, copied, onOpenLookup }: { result: PhoneTriageResult; onCopy: () => void; copied: boolean; onOpenLookup: () => void }) {
+  const lineTypeLabel = {
+    wireless: 'Wireless',
+    landline: 'Landline',
+    voip_virtual: 'VoIP / Virtual Number',
+    other: 'Special-purpose',
+    unknown: 'Unknown line type',
+  }[result.lineType];
+  const lookupText = result.externalLookupStatus === 'success'
+    ? 'Live carrier lookup completed. Number-region data is not proof of the caller’s current location.'
+    : result.externalLookupStatus === 'not_configured'
+      ? 'Live carrier intelligence is not configured. Local number parsing and risk checks still work.'
+      : result.externalLookupStatus === 'skipped_invalid'
+        ? 'Live lookup was skipped because local validation did not confirm this number.'
+        : 'Live carrier lookup is temporarily unavailable. Local number parsing and risk checks are shown.';
+
+  return (
+    <div className="fade-in" data-testid="content-phone-analysis-result">
+      <div className="result-kicker">Phone number assessment</div>
+      <RiskScore result={result} />
+      <p className="summary-copy">{result.summary}</p>
+      <div className={`provider-callout ${result.externalLookupStatus === 'success' ? 'configured' : ''}`} role="note" data-testid="status-phone-provider">
+        {result.externalLookupStatus === 'success' ? <ShieldCheck size={15} /> : <AlertTriangle size={15} />}
+        <span>{lookupText}</span>
+        {result.externalLookupStatus === 'not_configured' && <button type="button" className="provider-action" onClick={onOpenLookup} data-testid="button-coming-soon-phone">Coming soon <ArrowRight size={12} /></button>}
+      </div>
+
+      <section className="result-section" aria-labelledby="phone-overview-title">
+        <div className="section-title" id="phone-overview-title"><span>Number profile</span><span className="count-pill">{result.e164}</span></div>
+        <div className="phone-metadata-grid">
+          <article className="phone-metadata-card">
+            <div className="phone-metadata-label"><Phone size={13} />LINE TYPE</div>
+            <span className={`phone-type-badge phone-type-${result.lineType}`}>{lineTypeLabel}</span>
+            <p className="indicator-detail">Source: {result.lineTypeSource.replaceAll('_', ' ')}</p>
+          </article>
+          <article className="phone-metadata-card">
+            <div className="phone-metadata-label"><Radio size={13} />ORIGINAL CARRIER</div>
+            <strong>{result.carrier ?? 'Not available'}</strong>
+            <p className="indicator-detail">{result.carrierSource === 'abstract_phone' ? 'Provider-reported carrier' : 'Live lookup required for carrier data'}</p>
+          </article>
+          <article className="phone-metadata-card">
+            <div className="phone-metadata-label"><MapPin size={13} />NUMBER REGION</div>
+            <strong>{[result.locationCity, result.locationRegion, result.locationCountry].filter(Boolean).join(', ') || 'Not available'}</strong>
+            <p className="indicator-detail">{result.externalLookupStatus === 'success' ? 'Associated with this number, not a live caller location' : `Numbering region · ${result.countryCallingCode}`}</p>
+          </article>
+          <article className="phone-metadata-card">
+            <div className="phone-metadata-label"><ShieldCheck size={13} />VALIDITY</div>
+            <strong className={result.isValid ? 'risk-low' : 'risk-high'}>{result.isValid ? 'Valid number range' : 'Not confirmed'}</strong>
+            <p className="indicator-detail">{result.isPossible ? 'Possible number length' : 'Number length is not possible for this region'}</p>
+          </article>
+        </div>
+      </section>
+
+      {result.claimedLocation && (
+        <div className={`phone-location-check ${result.locationMismatch ? 'mismatch' : ''}`} role="status" data-testid="status-phone-location">
+          <MapPin size={14} />
+          <span>{result.locationMismatch ? 'Location mismatch flagged' : 'No clear location mismatch detected'}: caller claimed <strong>{result.claimedLocation}</strong>.</span>
+        </div>
+      )}
+
+      <section className="result-section" aria-labelledby="phone-recommendation-title">
+        <div className="section-title" id="phone-recommendation-title"><span>Safety recommendation</span></div>
+        <p className="phone-recommendation">{result.safetyRecommendation}</p>
+      </section>
+
+      <section className="result-section" aria-labelledby="phone-findings-title">
+        <div className="section-title" id="phone-findings-title"><span>Key findings</span><span className="count-pill">{result.findings.length}</span></div>
+        <ul className="findings-list">{result.findings.map((finding, index) => <li key={`${finding}-${index}`}><ChevronRight size={13} />{finding}</li>)}</ul>
+      </section>
+
+      <section className="result-section" aria-labelledby="phone-factors-title">
+        <div className="section-title" id="phone-factors-title"><span>Scoring factors</span><span className="count-pill">{result.factors.filter((factor) => factor.triggered).length} triggered</span></div>
+        {result.factors.map((factor) => (
+          <div className="factor-row" key={factor.id}>
+            <span>{factor.triggered ? 'Triggered · ' : ''}{factor.label}<span className="indicator-detail" style={{ display: 'block' }}>{factor.detail}</span></span>
+            <span className="factor-points">{factor.triggered ? '+' : ''}{factor.points}</span>
+          </div>
+        ))}
       </section>
       <button type="button" className={`report-button ${copied ? 'copied' : ''}`} onClick={onCopy} data-testid="button-copy-report">
         {copied ? <Check size={15} /> : <Clipboard size={15} />}
@@ -316,13 +450,18 @@ function AnalysisResultView({ result, onCopy, copied, onOpenReputation }: { resu
 function ComingSoonPage() {
   const [location, setLocation] = useLocation();
   const isAudio = location.endsWith('/audio-transcription');
-  const featureTitle = isAudio ? 'Audio transcription' : 'External URL reputation';
+  const isPhone = location.endsWith('/phone-lookup');
+  const featureTitle = isAudio ? 'Audio transcription' : isPhone ? 'Live phone intelligence' : 'External URL reputation';
   const featureCopy = isAudio
     ? 'Transcribing uploaded call recordings needs a speech-to-text provider connection. Until then, paste a transcript to run vishing analysis.'
-    : 'Live URL reputation checks need a VirusTotal or Google Safe Browsing connection. SMS and email analysis still works with local heuristic checks.';
+    : isPhone
+      ? 'Live carrier and location lookups need an Abstract Phone Validation API connection. Local number parsing and heuristic scoring still work.'
+      : 'Live URL reputation checks need a VirusTotal or Google Safe Browsing connection. SMS and email analysis still works with local heuristic checks.';
   const requirement = isAudio
     ? 'Audio upload requires an enabled transcription API.'
-    : 'External lookups require an enabled reputation API.';
+    : isPhone
+      ? 'Live phone intelligence requires the ABSTRACT_PHONE_KEY secret.'
+      : 'External lookups require an enabled reputation API.';
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -334,7 +473,7 @@ function ComingSoonPage() {
       </header>
       <div className="workbench coming-soon-workbench">
         <section className="panel coming-soon-panel" aria-labelledby="coming-soon-title">
-          <div className="coming-soon-icon">{isAudio ? <Mic size={21} /> : <Globe2 size={21} />}</div>
+          <div className="coming-soon-icon">{isAudio ? <Mic size={21} /> : isPhone ? <Phone size={21} /> : <Globe2 size={21} />}</div>
           <div className="eyebrow">INTEGRATION STATUS · NOT CONFIGURED</div>
           <h1 id="coming-soon-title">Coming soon</h1>
           <h2>{featureTitle}</h2>
@@ -349,8 +488,11 @@ function ComingSoonPage() {
 
 function Home() {
   const [, setLocation] = useLocation();
-  const [mode, setMode] = useState<'sms' | 'email' | 'voice'>('sms');
+  const [mode, setMode] = useState<'sms' | 'email' | 'voice' | 'phone'>('sms');
   const [content, setContent] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [phoneRegion, setPhoneRegion] = useState<CountryCode>('US');
+  const [claimedLocation, setClaimedLocation] = useState('');
   const [voiceInputMode, setVoiceInputMode] = useState<'transcript' | 'audio'>('transcript');
   const [transcript, setTranscript] = useState('');
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -360,19 +502,24 @@ function Home() {
   const [copied, setCopied] = useState(false);
   const [fileError, setFileError] = useState('');
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const phoneInputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLInputElement>(null);
   const analysis = useAnalyzeContent();
+  const phoneAnalysis = useTriagePhoneNumber();
   const voiceAnalysis = useTriageVoice();
   const providerQuery = useGetAnalysisProviders({ query: { queryKey: getGetAnalysisProvidersQueryKey(), staleTime: 60_000, retry: 1 } });
   const healthQuery = useHealthCheck({ query: { queryKey: getHealthCheckQueryKey(), staleTime: 30_000, retry: 1 } });
   const result = analysis.data;
+  const phoneResult = phoneAnalysis.data;
   const voiceResult = voiceAnalysis.data;
-  const report = useMemo(() => mode === 'voice'
-    ? (uploadedVoiceResult ?? voiceResult) ? makeVoiceReport((uploadedVoiceResult ?? voiceResult) as VoiceTriageResult) : ''
-    : result ? makeReport(result) : '', [mode, result, voiceResult, uploadedVoiceResult]);
+  const report = useMemo(() => mode === 'phone'
+    ? phoneResult ? makePhoneReport(phoneResult) : ''
+    : mode === 'voice'
+      ? (uploadedVoiceResult ?? voiceResult) ? makeVoiceReport((uploadedVoiceResult ?? voiceResult) as VoiceTriageResult) : ''
+      : result ? makeReport(result) : '', [mode, result, phoneResult, voiceResult, uploadedVoiceResult]);
 
-  const chooseMode = (next: 'sms' | 'email' | 'voice') => {
+  const chooseMode = (next: 'sms' | 'email' | 'voice' | 'phone') => {
     setMode(next);
     setFileError('');
     setCopied(false);
@@ -384,6 +531,21 @@ function Home() {
     setCopied(false);
     setFileError('');
     analysis.mutate({ data: { source: mode === 'email' ? 'email' : 'sms', content: content.trim() } });
+  };
+
+  const submitPhone = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!phoneNumber.trim() || phoneAnalysis.isPending) return;
+    setCopied(false);
+    setFileError('');
+    const parsedPhone = parsePhonePreview(phoneNumber, phoneRegion);
+    phoneAnalysis.mutate({
+      data: {
+        phoneNumber: parsedPhone?.isPossible() ? parsedPhone.number : phoneNumber.trim(),
+        defaultRegion: phoneRegion,
+        ...(claimedLocation.trim() ? { claimedLocation: claimedLocation.trim() } : {}),
+      },
+    });
   };
 
   const validAudio = (file: File) => {
@@ -483,14 +645,18 @@ function Home() {
 
   const clearInput = () => {
     setContent('');
+    setPhoneNumber('');
+    setClaimedLocation('');
     setTranscript('');
     setAudioFile(null);
     setUploadedVoiceResult(null);
     setFileError('');
     analysis.reset();
+    phoneAnalysis.reset();
     voiceAnalysis.reset();
     setCopied(false);
-    inputRef.current?.focus();
+    if (mode === 'phone') phoneInputRef.current?.focus();
+    else inputRef.current?.focus();
   };
 
   const insertExample = () => {
@@ -504,8 +670,11 @@ function Home() {
   const serviceStatus = healthQuery.data?.status;
   const charCount = content.length;
   const remaining = 100000 - charCount;
+  const parsedPhonePreview = phoneNumber ? parsePhonePreview(phoneNumber, phoneRegion) : undefined;
+  const phoneE164Preview = parsedPhonePreview?.isPossible() ? parsedPhonePreview.number : '';
   const shownVoiceResult = mode === 'voice' ? uploadedVoiceResult ?? voiceAnalysis.data : undefined;
   const voicePending = voiceAnalysis.isPending || (mode === 'voice' && voiceInputMode === 'audio' && audioFile !== null && audioUploadPending);
+  const activePending = mode === 'voice' ? voicePending : mode === 'phone' ? phoneAnalysis.isPending : analysis.isPending;
 
   return (
     <main className="app-shell">
@@ -529,7 +698,7 @@ function Home() {
         <section className="intro">
           <div className="eyebrow"><span style={{ width: 23, height: 1, background: '#397a68' }} /> INCIDENT INTAKE · ANALYST WORKBENCH</div>
           <h1>Make the message<br className="hidden sm:block" /> tell its story.</h1>
-          <p>Inspect suspicious messages and calls for risk signals, authentication clues, and actionable indicators. Turn uncertain evidence into a defensible triage note.</p>
+          <p>Inspect suspicious messages, calls, and caller IDs for risk signals, authentication clues, and actionable indicators. Turn uncertain evidence into a defensible triage note.</p>
         </section>
 
         <div className="work-grid">
@@ -543,10 +712,50 @@ function Home() {
               <button type="button" aria-pressed={mode === 'email'} className={`source-option ${mode === 'email' ? 'active' : ''}`} onClick={() => chooseMode('email')} data-testid="tab-source-email"><Mail size={14} /><span>Email Headers</span></button>
               <button type="button" aria-pressed={mode === 'sms'} className={`source-option ${mode === 'sms' ? 'active' : ''}`} onClick={() => chooseMode('sms')} data-testid="tab-source-sms"><MessageSquareText size={14} /><span>SMS / Smishing</span></button>
               <button type="button" aria-pressed={mode === 'voice'} className={`source-option ${mode === 'voice' ? 'active' : ''}`} onClick={() => chooseMode('voice')} data-testid="tab-source-voice"><Mic size={14} /><span>Voice / Vishing</span></button>
+              <button type="button" aria-pressed={mode === 'phone'} className={`source-option ${mode === 'phone' ? 'active' : ''}`} onClick={() => chooseMode('phone')} data-testid="tab-source-phone"><Phone size={14} /><span>Phone Lookup</span></button>
             </div>
 
-            <form onSubmit={mode === 'voice' ? submitVoice : submit}>
-              {mode === 'voice' ? (
+            <form onSubmit={mode === 'voice' ? submitVoice : mode === 'phone' ? submitPhone : submit}>
+              {mode === 'phone' ? (
+                <>
+                  <div className="voice-intro phone-intro">
+                    <div className="voice-intro-mark"><Phone size={18} /></div>
+                    <div><strong>Phone Number OSINT</strong><span>Parse the number locally, then compare carrier and region data when live lookup is enabled.</span></div>
+                  </div>
+                  <div className="phone-input-grid">
+                    <div>
+                      <label className="field-label" htmlFor="phone-region">Country / region</label>
+                      <select id="phone-region" className="phone-field" value={phoneRegion} onChange={(event) => {
+                        const nextRegion = event.target.value as CountryCode;
+                        setPhoneRegion(nextRegion);
+                        if (!phoneNumber.trimStart().startsWith('+')) setPhoneNumber(formatPhoneAsYouType(phoneNumber, nextRegion));
+                        phoneAnalysis.reset();
+                      }} data-testid="select-phone-region">
+                        {phoneRegions.map(({ code, name }) => <option key={code} value={code}>{name} (+{getCountryCallingCode(code)})</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="field-label" htmlFor="phone-number">Phone number</label>
+                      <input ref={phoneInputRef} id="phone-number" className="phone-field phone-number-field" type="tel" autoComplete="tel" inputMode="tel" value={phoneNumber} onChange={(event) => {
+                        setPhoneNumber(formatPhoneAsYouType(event.target.value, phoneRegion));
+                        phoneAnalysis.reset();
+                      }} onBlur={() => {
+                        const parsed = parsePhonePreview(phoneNumber, phoneRegion);
+                        if (parsed?.isPossible()) setPhoneNumber(parsed.number);
+                      }} placeholder="+1 415 555 0132 or a local number" aria-describedby="phone-e164-preview" data-testid="input-phone-number" />
+                    </div>
+                  </div>
+                  <div className="phone-preview-row" id="phone-e164-preview"><span>Normalized E.164</span><strong>{phoneE164Preview || 'Enter a number to preview'}</strong></div>
+                  <div className="phone-claim-field">
+                    <label className="field-label" htmlFor="claimed-location">Claimed caller location <span className="optional-label">OPTIONAL</span></label>
+                    <input id="claimed-location" className="phone-field" value={claimedLocation} onChange={(event) => {
+                      setClaimedLocation(event.target.value.slice(0, 120));
+                      phoneAnalysis.reset();
+                    }} placeholder="City, state / province, or country" maxLength={120} data-testid="input-claimed-location" />
+                  </div>
+                  <p className="phone-privacy">When enabled, the normalized number is sent to Abstract for carrier and regional metadata. Do not submit a private number without authorization. Local parsing works without the provider.</p>
+                </>
+              ) : mode === 'voice' ? (
                 <>
                   <div className="voice-intro">
                     <div className="voice-intro-mark"><Mic size={18} /></div>
@@ -581,7 +790,7 @@ function Home() {
                         <button type="button" className="quiet-button" onClick={() => audioRef.current?.click()} data-testid="button-select-audio">{audioFile ? 'Choose a different file' : 'Browse files'}</button>
                       </div>
                       {audioFile && <button type="button" className="quiet-button audio-remove" onClick={() => { setAudioFile(null); if (audioRef.current) audioRef.current.value = ''; }} data-testid="button-remove-audio"><RotateCcw size={13} />Remove recording</button>}
-                      <p className="audio-privacy">When transcription is configured, audio is sent to the transcription service. Without it, only a clearly labeled sample transcript is returned. Keep sensitive personal data to a minimum.</p>
+                      <p className="audio-privacy">When transcription is configured, audio is sent to the transcription service. Without it, upload is unavailable; paste a transcript to continue. Keep sensitive personal data to a minimum.</p>
                     </>
                   )}
                 </>
@@ -591,7 +800,7 @@ function Home() {
                 <span className="field-hint">{mode === 'sms' ? 'TEXT BODY' : 'HEADERS + BODY'}</span>
               </div>
               )}
-              {mode !== 'voice' && (
+              {mode !== 'voice' && mode !== 'phone' && (
               <>
               <textarea
                 ref={inputRef}
@@ -617,7 +826,7 @@ function Home() {
               )}
 
               {fileError && <div className="error-box" role="alert" data-testid="status-file-error">{fileError}</div>}
-              {mode !== 'voice' && analysis.isError && (
+              {mode !== 'voice' && mode !== 'phone' && analysis.isError && (
                 <div className="error-box" role="alert" data-testid="status-analysis-error">
                   <strong>Analysis could not be completed.</strong>{' '}
                   {analysis.error instanceof Error ? analysis.error.message : 'Check your connection and try again.'}
@@ -625,12 +834,15 @@ function Home() {
                 </div>
               )}
               {mode === 'voice' && voiceAnalysis.isError && <div className="error-box" role="alert" data-testid="status-voice-analysis-error"><strong>Voice triage could not be completed.</strong>{' '}{voiceAnalysis.error instanceof Error ? voiceAnalysis.error.message : 'Check your connection and try again.'}<button type="button" onClick={() => voiceInputMode === 'transcript' && transcript.trim() ? voiceAnalysis.mutate({ data: { transcript: transcript.trim() } }) : submitVoice()} className="retry-inline" data-testid="button-retry-voice">Retry</button></div>}
+              {mode === 'phone' && phoneAnalysis.isError && <div className="error-box" role="alert" data-testid="status-phone-analysis-error"><strong>Number analysis could not be completed.</strong>{' '}{phoneAnalysis.error instanceof Error ? phoneAnalysis.error.message : 'Check the number and try again.'}</div>}
 
-              <button type="submit" className="analyze-button" disabled={mode === 'voice' ? voicePending || (voiceInputMode === 'transcript' ? !transcript.trim() || transcript.length > 100000 : !audioFile) : !content.trim() || analysis.isPending || charCount > 100000} data-testid="button-analyze">
-                {(mode === 'voice' ? voicePending : analysis.isPending) ? <><LoaderCircle size={16} className="spin" />{mode === 'voice' ? 'Analyzing call…' : 'Reading signals…'}</> : <><ScanSearch size={16} />{mode === 'voice' ? 'Analyze voice evidence' : 'Analyze message'}<ArrowRight size={15} /></>}
+              <button type="submit" className="analyze-button" disabled={mode === 'voice' ? voicePending || (voiceInputMode === 'transcript' ? !transcript.trim() || transcript.length > 100000 : !audioFile) : mode === 'phone' ? !phoneNumber.trim() || phoneAnalysis.isPending : !content.trim() || analysis.isPending || charCount > 100000} data-testid="button-analyze">
+                {activePending
+                  ? <><LoaderCircle size={16} className="spin" />{mode === 'voice' ? 'Analyzing call…' : mode === 'phone' ? 'Analyzing number…' : 'Reading signals…'}</>
+                  : <><ScanSearch size={16} />{mode === 'voice' ? 'Analyze voice evidence' : mode === 'phone' ? 'Analyze Number' : 'Analyze message'}<ArrowRight size={15} /></>}
               </button>
             </form>
-            <p className="safety-note" id={mode === 'voice' ? undefined : 'input-note'}><ShieldCheck size={14} />Analysis is heuristic, not a verdict. Treat scores as one input to human review. Avoid submitting sensitive personal data.</p>
+            <p className="safety-note" id={mode === 'sms' || mode === 'email' ? 'input-note' : undefined}><ShieldCheck size={14} />Analysis is heuristic, not a verdict. Treat scores as one input to human review. Avoid submitting sensitive personal data.</p>
           </section>
 
           <section className="panel result-panel" aria-labelledby="result-panel-title">
@@ -638,7 +850,7 @@ function Home() {
               <div><h2 id="result-panel-title">Triage report</h2><p>Evidence first. Conclusions with context.</p></div>
               <span className="step-tag">ASSESS 02</span>
             </div>
-            {(mode === 'voice' ? voicePending : analysis.isPending) ? (
+            {activePending ? (
               <div aria-label="Analyzing message" aria-live="polite" data-testid="status-analysis-loading">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, margin: '20px 0' }}>
                   <div className="skeleton" style={{ width: 74, height: 74, borderRadius: '50%' }} />
@@ -646,22 +858,32 @@ function Home() {
                 </div>
                 <div className="skeleton" style={{ height: 10, width: '95%', marginBottom: 9 }} /><div className="skeleton" style={{ height: 10, width: '78%', marginBottom: 24 }} />
                 <div className="result-section"><div className="skeleton" style={{ height: 10, width: 125, marginBottom: 14 }} /><div className="skeleton" style={{ height: 44, marginBottom: 8 }} /><div className="skeleton" style={{ height: 44 }} /></div>
-                <p className="result-meta">{mode === 'voice' ? 'TRANSCRIBING AND CHECKING CALL SIGNALS' : 'CHECKING MESSAGE SIGNALS'}</p>
+                <p className="result-meta">{mode === 'voice' ? 'TRANSCRIBING AND CHECKING CALL SIGNALS' : mode === 'phone' ? 'PARSING NUMBER AND CHECKING METADATA' : 'CHECKING MESSAGE SIGNALS'}</p>
               </div>
             ) : mode === 'voice' && shownVoiceResult ? (
               <VoiceResultView result={shownVoiceResult} onCopy={copyReport} copied={copied} />
-            ) : mode !== 'voice' && result ? (
+            ) : mode === 'phone' && phoneResult ? (
+              <PhoneResultView result={phoneResult} onCopy={copyReport} copied={copied} onOpenLookup={() => setLocation('/coming-soon/phone-lookup')} />
+            ) : (mode === 'sms' || mode === 'email') && result ? (
               <AnalysisResultView result={result} onCopy={copyReport} copied={copied} onOpenReputation={() => setLocation('/coming-soon/reputation')} />
             ) : (
               <div className="empty-result" data-testid="content-empty-result">
                 <div className="empty-graphic"><Fingerprint size={34} strokeWidth={1.4} /></div>
-                <h3>{mode === 'voice' ? 'Listen for pressure.' : 'Evidence goes here.'}</h3>
-                <p>{mode === 'voice' ? 'Submit a call recording or transcript to surface authority claims, urgency, and high-risk demands.' : 'Submit a suspicious message to see its risk signals, extracted indicators, and analyst-ready report.'}</p>
+                <h3>{mode === 'voice' ? 'Listen for pressure.' : mode === 'phone' ? 'Verify the caller ID.' : 'Evidence goes here.'}</h3>
+                <p>{mode === 'voice'
+                  ? 'Submit a call recording or transcript to surface authority claims, urgency, and high-risk demands.'
+                  : mode === 'phone'
+                    ? 'Analyze a number for line type, carrier metadata, location signals, and caller-risk factors.'
+                    : 'Submit a suspicious message to see its risk signals, extracted indicators, and analyst-ready report.'}</p>
                 {providerQuery.isLoading
-                  ? <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 21, color: '#84908a', font: '10px var(--app-font-mono)' }}><Globe2 size={13} />Checking reputation provider…</div>
-                  : provider?.configured
-                    ? <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 21, color: '#84908a', font: '10px var(--app-font-mono)' }}><Globe2 size={13} />{`LOOKUPS · ${(provider.provider ?? '').replaceAll('_', ' ').toUpperCase()}`}</div>
-                    : <button type="button" className="empty-provider-action" onClick={() => setLocation('/coming-soon/reputation')}><Globe2 size={13} />NO EXTERNAL REPUTATION LOOKUPS · COMING SOON</button>}
+                  ? <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 21, color: '#84908a', font: '10px var(--app-font-mono)' }}><Globe2 size={13} />Checking provider status…</div>
+                  : mode === 'phone'
+                    ? provider?.phoneLookupConfigured
+                      ? <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 21, color: '#84908a', font: '10px var(--app-font-mono)' }}><Phone size={13} />LIVE PHONE LOOKUP · ABSTRACT</div>
+                      : <button type="button" className="empty-provider-action" onClick={() => setLocation('/coming-soon/phone-lookup')}><Phone size={13} />LIVE CARRIER LOOKUP · COMING SOON</button>
+                    : provider?.configured
+                      ? <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 21, color: '#84908a', font: '10px var(--app-font-mono)' }}><Globe2 size={13} />{`LOOKUPS · ${(provider.provider ?? '').replaceAll('_', ' ').toUpperCase()}`}</div>
+                      : <button type="button" className="empty-provider-action" onClick={() => setLocation('/coming-soon/reputation')}><Globe2 size={13} />NO EXTERNAL REPUTATION LOOKUPS · COMING SOON</button>}
               </div>
             )}
           </section>
