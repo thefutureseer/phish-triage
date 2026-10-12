@@ -10,6 +10,7 @@ import type { AnalysisResultReputationProvider } from './analysisResultReputatio
 import type { AnalysisResultRiskLevel } from './analysisResultRiskLevel';
 import type { AnalysisResultSource } from './analysisResultSource';
 import type { AuthCheck } from './authCheck';
+import type { DnsAuthObservation } from './dnsAuthObservation';
 import type { Indicator } from './indicator';
 import type { RiskFactor } from './riskFactor';
 
@@ -27,6 +28,7 @@ export interface AnalysisResult {
   urgencyFlags: string[];
   authChecks: AuthCheck[];
   authOverall: AnalysisResultAuthOverall;
+  dnsAuthObservations: DnsAuthObservation[];
   factors: RiskFactor[];
   findings: string[];
   reputationConfigured: boolean;

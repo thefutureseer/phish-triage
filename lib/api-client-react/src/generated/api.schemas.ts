@@ -146,6 +146,56 @@ export interface AuthCheck {
   detail: string;
 }
 
+export type DnsAuthObservationMechanism = typeof DnsAuthObservationMechanism[keyof typeof DnsAuthObservationMechanism];
+
+
+export const DnsAuthObservationMechanism = {
+  spf: 'spf',
+  dkim: 'dkim',
+  dmarc: 'dmarc',
+} as const;
+
+export type DnsAuthObservationStatus = typeof DnsAuthObservationStatus[keyof typeof DnsAuthObservationStatus];
+
+
+export const DnsAuthObservationStatus = {
+  published: 'published',
+  not_found: 'not_found',
+  timed_out: 'timed_out',
+  unavailable: 'unavailable',
+  not_checked: 'not_checked',
+} as const;
+
+export type DnsAuthObservationTargetSource = typeof DnsAuthObservationTargetSource[keyof typeof DnsAuthObservationTargetSource];
+
+
+export const DnsAuthObservationTargetSource = {
+  'return-path': 'return-path',
+  'authentication-results': 'authentication-results',
+  'received-spf': 'received-spf',
+  from: 'from',
+  'dkim-signature': 'dkim-signature',
+  missing: 'missing',
+} as const;
+
+export interface DnsAuthObservation {
+  mechanism: DnsAuthObservationMechanism;
+  status: DnsAuthObservationStatus;
+  /** @nullable */
+  domain: string | null;
+  /** @nullable */
+  selector: string | null;
+  /** @nullable */
+  lookupName: string | null;
+  targetSource: DnsAuthObservationTargetSource;
+  /**
+     * @maxItems 5
+     * @items.maxLength 2048
+     */
+  records: string[];
+  detail: string;
+}
+
 export interface RiskFactor {
   id: string;
   label: string;
@@ -169,6 +219,7 @@ export interface AnalysisResult {
   urgencyFlags: string[];
   authChecks: AuthCheck[];
   authOverall: AnalysisResultAuthOverall;
+  dnsAuthObservations: DnsAuthObservation[];
   factors: RiskFactor[];
   findings: string[];
   reputationConfigured: boolean;

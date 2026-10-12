@@ -41,6 +41,10 @@ export const AnalyzeContentBody = zod.object({
 export const analyzeContentResponseRiskScoreMin = 0;
 export const analyzeContentResponseRiskScoreMax = 100;
 
+export const analyzeContentResponseDnsAuthObservationsItemRecordsItemMax = 2048;
+
+export const analyzeContentResponseDnsAuthObservationsItemRecordsMax = 5;
+
 export const analyzeContentResponseFactorsItemPointsMin = 0;
 
 
@@ -69,6 +73,16 @@ export const AnalyzeContentResponse = zod.object({
   "detail": zod.string()
 })),
   "authOverall": zod.enum(['not_applicable', 'pass', 'mixed', 'fail', 'unavailable']),
+  "dnsAuthObservations": zod.array(zod.object({
+  "mechanism": zod.enum(['spf', 'dkim', 'dmarc']),
+  "status": zod.enum(['published', 'not_found', 'timed_out', 'unavailable', 'not_checked']),
+  "domain": zod.string().nullable(),
+  "selector": zod.string().nullable(),
+  "lookupName": zod.string().nullable(),
+  "targetSource": zod.enum(['return-path', 'authentication-results', 'received-spf', 'from', 'dkim-signature', 'missing']),
+  "records": zod.array(zod.string().max(analyzeContentResponseDnsAuthObservationsItemRecordsItemMax)).max(analyzeContentResponseDnsAuthObservationsItemRecordsMax),
+  "detail": zod.string()
+})),
   "factors": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string(),

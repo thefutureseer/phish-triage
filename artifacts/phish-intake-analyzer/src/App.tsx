@@ -45,6 +45,13 @@ function makeReport(result: AnalysisResult): string {
       ? result.authChecks.map((check) => `- **${check.mechanism.toUpperCase()} — ${check.status}${check.aligned === null ? '' : check.aligned ? ', aligned' : ', not aligned'}${check.domain ? ` (${check.domain})` : ''}:** ${check.detail}`)
       : ['- Not applicable or no authentication checks returned.']),
     '',
+    '## Current DNS observations (separate from header claims)',
+    ...result.dnsAuthObservations.map((observation) => {
+      const label = `${observation.mechanism.toUpperCase()}${observation.selector ? ` selector ${observation.selector}` : ''}${observation.lookupName ? ` at ${observation.lookupName}` : ''}`;
+      return `- **${label} — ${observation.status} (${observation.targetSource}):** ${observation.detail}${observation.records.length ? ` Records: ${observation.records.join(' | ')}` : ''}`;
+    }),
+    '- DNS observations show records published at analysis time; they do not verify the message or prove who sent it.',
+    '',
     '## Urgency signals',
     ...(result.urgencyFlags.length ? result.urgencyFlags.map((flag) => `- ${flag}`) : ['- None returned.']),
     '',
@@ -133,7 +140,7 @@ function AnalysisResultView({ result, onCopy, copied }: { result: AnalysisResult
 
       {result.source === 'email' && (
         <section className="result-section" aria-labelledby="auth-title">
-          <div className="section-title" id="auth-title"><span>Sender authentication</span><span className="count-pill">{authLabel}</span></div>
+          <div className="section-title" id="auth-title"><span>Authentication-Results claims</span><span className="count-pill">{authLabel}</span></div>
           {result.authChecks.length ? (
             <div className="auth-grid">
               {result.authChecks.map((check) => (
@@ -146,6 +153,30 @@ function AnalysisResultView({ result, onCopy, copied }: { result: AnalysisResult
               ))}
             </div>
           ) : <p className="indicator-detail">No authentication checks were returned.</p>}
+        </section>
+      )}
+
+      {result.source === 'email' && (
+        <section className="result-section" aria-labelledby="dns-auth-title">
+          <div className="section-title" id="dns-auth-title"><span>Current DNS observations</span><span className="count-pill">DNS</span></div>
+          <p className="indicator-detail">These are separate checks of records published at analysis time. They do not verify the pasted headers or prove who sent the message.</p>
+          <div className="dns-auth-list">
+            {result.dnsAuthObservations.map((observation, index) => (
+              <article className="dns-auth-item" key={`${observation.mechanism}-${observation.lookupName ?? 'missing'}-${index}`}>
+                <div className="dns-auth-top">
+                  <strong>{observation.mechanism.toUpperCase()}{observation.selector ? ` · selector ${observation.selector}` : ''}</strong>
+                  <span className={`dns-status dns-status-${observation.status.replaceAll('_', '-')}`}>{observation.status.replaceAll('_', ' ')}</span>
+                </div>
+                <div className="dns-auth-name">{observation.lookupName ?? 'No safe lookup target in headers'}</div>
+                <p className="indicator-detail">Target from {observation.targetSource.replaceAll('-', ' ')}. {observation.detail}</p>
+                {observation.records.length > 0 && (
+                  <ul className="dns-record-list">
+                    {observation.records.map((record, recordIndex) => <li key={`${recordIndex}-${record}`}>{record}</li>)}
+                  </ul>
+                )}
+              </article>
+            ))}
+          </div>
         </section>
       )}
 

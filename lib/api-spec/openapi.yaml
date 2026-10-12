@@ -130,6 +130,10 @@ components:
         authOverall:
           type: string
           enum: [not_applicable, pass, mixed, fail, unavailable]
+        dnsAuthObservations:
+          type: array
+          items:
+            $ref: "#/components/schemas/DnsAuthObservation"
         factors:
           type: array
           items:
@@ -153,6 +157,7 @@ components:
         - urgencyFlags
         - authChecks
         - authOverall
+        - dnsAuthObservations
         - factors
         - findings
         - reputationConfigured
@@ -195,6 +200,33 @@ components:
         detail:
           type: string
       required: [mechanism, status, aligned, domain, detail]
+    DnsAuthObservation:
+      type: object
+      properties:
+        mechanism:
+          type: string
+          enum: [spf, dkim, dmarc]
+        status:
+          type: string
+          enum: [published, not_found, timed_out, unavailable, not_checked]
+        domain:
+          type: ["string", "null"]
+        selector:
+          type: ["string", "null"]
+        lookupName:
+          type: ["string", "null"]
+        targetSource:
+          type: string
+          enum: [return-path, authentication-results, received-spf, from, dkim-signature, missing]
+        records:
+          type: array
+          maxItems: 5
+          items:
+            type: string
+            maxLength: 2048
+        detail:
+          type: string
+      required: [mechanism, status, domain, selector, lookupName, targetSource, records, detail]
     RiskFactor:
       type: object
       properties:

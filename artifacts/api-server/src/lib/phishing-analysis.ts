@@ -1,4 +1,4 @@
-import { lookup } from "node:dns/promises";
+import { Resolver, lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import * as http from "node:http";
 import * as https from "node:https";
@@ -13,6 +13,9 @@ type Reputation = Indicator["reputation"];
 const MAX_URLS = 10;
 const MAX_REDIRECTS = 4;
 const REQUEST_TIMEOUT_MS = 4_000;
+const DNS_LOOKUP_TIMEOUT_MS = 1_200;
+const MAX_DKIM_SIGNATURES = 3;
+const MAX_DNS_RECORDS = 5;
 const KNOWN_SHORTENERS = new Set([
   "bit.ly",
   "t.co",
@@ -83,6 +86,15 @@ type ExtractedUrl = {
 type ReputationResult = {
   reputation: Reputation;
   detail: string;
+};
+type DnsAuthObservation = AnalysisResult["dnsAuthObservations"][number];
+
+type DnsAuthTarget = {
+  mechanism: DnsAuthObservation["mechanism"];
+  domain: string | null;
+  selector: string | null;
+  lookupName: string | null;
+  targetSource: DnsAuthObservation["targetSource"];
 };
 
 function decodeHtml(value: string): string {
@@ -240,6 +252,201 @@ function splitEmail(raw: string): { headers: Map<string, string[]>; body: string
 function emailDomain(fromHeader: string): string | null {
   const address = fromHeader.match(/<?[^<>\s@]+@([^<>\s,;]+)>?/);
   return address?.[1]?.replace(/[)>].*$/, "").toLowerCase() ?? null;
+}
+
+function normalizedDnsName(value: string): string | null {
+  const domain = value.toLowerCase().replace(/\.$/, "");
+  if (
+    isIP(domain) !== 0 ||
+    domain.length > 253 ||
+    !domain.includes(".") ||
+    domain.split(".").some(
+      (label) =>
+        label.length < 1 ||
+        label.length > 63 ||
+        !/^[a-z\d](?:[a-z\d-]*[a-z\d])?$/.test(label),
+    )
+  ) {
+    return null;
+  }
+  return domain;
+}
+
+function domainFromAddressOrDomain(value: string): string | null {
+  const candidate = value.trim().replace(/^<|>$/g, "");
+  const at = candidate.lastIndexOf("@");
+  return normalizedDnsName(at >= 0 ? candidate.slice(at + 1) : candidate);
+}
+
+function getDnsAuthTargets(raw: string): DnsAuthTarget[] {
+  const { headers } = splitEmail(raw);
+  const fromDomain = normalizedDnsName(
+    emailDomain((headers.get("from") ?? [""])[0] ?? "") ?? "",
+  );
+  const returnPathDomain = normalizedDnsName(
+    emailDomain((headers.get("return-path") ?? [""])[0] ?? "") ?? "",
+  );
+  const authResults = (headers.get("authentication-results") ?? []).join("; ");
+  const receivedSpf = (headers.get("received-spf") ?? []).join("; ");
+  const authSpfDomain = domainFromAddressOrDomain(
+    authResults.match(/\b(?:smtp\.mailfrom|envelope-from)=<?([^;\s,]+)/i)?.[1] ?? "",
+  );
+  const receivedSpfDomain = domainFromAddressOrDomain(
+    receivedSpf.match(/\benvelope-from=<?([^;\s,]+)/i)?.[1] ?? "",
+  );
+  const spfTarget = returnPathDomain
+    ? { domain: returnPathDomain, targetSource: "return-path" as const }
+    : authSpfDomain
+      ? { domain: authSpfDomain, targetSource: "authentication-results" as const }
+      : receivedSpfDomain
+        ? { domain: receivedSpfDomain, targetSource: "received-spf" as const }
+        : null;
+
+  const targets: DnsAuthTarget[] = [
+    {
+      mechanism: "spf",
+      domain: spfTarget?.domain ?? null,
+      selector: null,
+      lookupName: spfTarget?.domain ?? null,
+      targetSource: spfTarget?.targetSource ?? "missing",
+    },
+    {
+      mechanism: "dmarc",
+      domain: fromDomain,
+      selector: null,
+      lookupName: fromDomain ? `_dmarc.${fromDomain}` : null,
+      targetSource: fromDomain ? "from" : "missing",
+    },
+  ];
+
+  const signatures = new Map<string, DnsAuthTarget>();
+  for (const value of headers.get("dkim-signature") ?? []) {
+    const tags = new Map(
+      value.split(";").flatMap((tag) => {
+        const match = tag.trim().match(/^([a-z])\s*=\s*(.+)$/i);
+        return match ? [[match[1]!.toLowerCase(), match[2]!.trim()] as const] : [];
+      }),
+    );
+    const domain = normalizedDnsName(tags.get("d") ?? "");
+    const selector = tags.get("s")?.replace(/^["']|["']$/g, "") ?? "";
+    if (!domain || !/^[a-z\d](?:[a-z\d_-]{0,61}[a-z\d])?$/.test(selector)) continue;
+    const key = `${selector.toLowerCase()}._domainkey.${domain}`;
+    signatures.set(key, {
+      mechanism: "dkim",
+      domain,
+      selector,
+      lookupName: key,
+      targetSource: "dkim-signature",
+    });
+    if (signatures.size >= MAX_DKIM_SIGNATURES) break;
+  }
+  targets.push(
+    ...(signatures.size
+      ? [...signatures.values()]
+      : [
+          {
+            mechanism: "dkim" as const,
+            domain: null,
+            selector: null,
+            lookupName: null,
+            targetSource: "missing" as const,
+          },
+        ]),
+  );
+  return targets;
+}
+
+async function lookupDnsTxt(
+  target: DnsAuthTarget,
+): Promise<DnsAuthObservation> {
+  const base = {
+    mechanism: target.mechanism,
+    domain: target.domain,
+    selector: target.selector,
+    lookupName: target.lookupName,
+    targetSource: target.targetSource,
+  };
+  if (!target.lookupName) {
+    return {
+      ...base,
+      status: "not_checked",
+      records: [],
+      detail: "Required email headers did not provide a safe DNS lookup target.",
+    };
+  }
+
+  const resolver = new Resolver({ timeout: DNS_LOOKUP_TIMEOUT_MS, tries: 1 });
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  try {
+    const recordsPromise = resolver.resolveTxt(target.lookupName);
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => {
+        timedOut = true;
+        resolver.cancel();
+        reject(new Error("DNS lookup timed out"));
+      }, DNS_LOOKUP_TIMEOUT_MS);
+    });
+    const txtRecords = await Promise.race([recordsPromise, timeoutPromise]);
+    const relevantRecords = txtRecords
+      .map((chunks) => chunks.join(""))
+      .filter((record) => {
+        if (target.mechanism === "spf") return /^\s*v=spf1\b/i.test(record);
+        if (target.mechanism === "dmarc") return /^\s*v=dmarc1\b/i.test(record);
+        return /\bv=dkim1\b/i.test(record) || /\bp=/i.test(record);
+      })
+      .slice(0, MAX_DNS_RECORDS)
+      .map((record) => record.slice(0, 2_048));
+    return relevantRecords.length
+      ? {
+          ...base,
+          status: "published",
+          records: relevantRecords,
+          detail: `${relevantRecords.length} matching TXT record${relevantRecords.length === 1 ? "" : "s"} observed in DNS at analysis time.`,
+        }
+      : {
+          ...base,
+          status: "not_found",
+          records: [],
+          detail: "DNS responded, but no matching authentication TXT record was found.",
+        };
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (
+      timedOut ||
+      code === "ETIMEOUT" ||
+      code === "ETIMEDOUT" ||
+      (error instanceof Error && error.message.includes("timed out"))
+    ) {
+      return {
+        ...base,
+        status: "timed_out",
+        records: [],
+        detail: `DNS lookup exceeded ${DNS_LOOKUP_TIMEOUT_MS} ms.`,
+      };
+    }
+    if (code === "ENODATA" || code === "ENOTFOUND" || code === "NXDOMAIN") {
+      return {
+        ...base,
+        status: "not_found",
+        records: [],
+        detail: "No TXT record was found at this DNS name.",
+      };
+    }
+    return {
+      ...base,
+      status: "unavailable",
+      records: [],
+      detail: "DNS lookup was unavailable; no record conclusion can be made.",
+    };
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+    resolver.cancel();
+  }
+}
+
+async function checkDnsAuthentication(raw: string): Promise<DnsAuthObservation[]> {
+  return Promise.all(getDnsAuthTargets(raw).map(lookupDnsTxt));
 }
 
 function isAligned(domain: string | null, fromDomain: string | null): boolean | null {
@@ -644,6 +851,8 @@ export async function analyzeMessage(
     content.toLowerCase().includes(phrase),
   ).map((phrase) => `High-pressure language: “${phrase}”`);
   const authChecks = source === "email" ? parseAuthChecks(content) : [];
+  const dnsAuthObservations =
+    source === "email" ? await checkDnsAuthentication(content) : [];
   const knownAuth = authChecks.filter((check) => check.status !== "unknown");
   const failedAuth = authChecks.filter((check) => check.status === "fail");
   const passedAuth = authChecks.filter((check) => check.status === "pass");
@@ -802,7 +1011,7 @@ export async function analyzeMessage(
     `${urls.length} URL(s) extracted (maximum ${MAX_URLS} analyzed).`,
     `${indicators.filter((item) => item.kind === "domain").length} domain(s), ${indicators.filter((item) => item.kind === "ip").length} IP address(es), and ${indicators.filter((item) => item.kind === "phone").length} phone number(s) extracted.`,
     source === "email"
-      ? `SPF, DKIM, and DMARC results are parsed from supplied headers only; DNS authentication checks are not performed.${authOverall === "unavailable" ? " No usable Authentication-Results were present." : ""}`
+      ? "Authentication-Results claims are parsed from supplied headers. Separate DNS observations report records currently published for available header-derived targets; they do not authenticate this message."
       : "Email authentication checks do not apply to SMS input.",
     configuredProvider()
       ? `URL reputation checked with ${configuredProvider() === "virustotal" ? "VirusTotal" : "Google Safe Browsing"} when available.`
@@ -833,6 +1042,7 @@ export async function analyzeMessage(
     urgencyFlags,
     authChecks,
     authOverall,
+    dnsAuthObservations,
     factors,
     findings,
     reputationConfigured: Boolean(configuredProvider()),

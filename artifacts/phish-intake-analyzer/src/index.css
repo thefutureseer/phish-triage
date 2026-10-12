@@ -461,6 +461,15 @@
 .auth-chip strong { display:block;font:10px var(--app-font-mono);text-transform:uppercase;color:#63706d; }
 .auth-chip span { display:block;font-size:10px;font-weight:700;margin-top:5px;text-transform:capitalize; }
 .auth-detail { color:#828984!important;font-size:9px!important;font-weight:400!important;line-height:1.4;margin-top:5px; }
+.dns-auth-list { display:grid;gap:7px;margin-top:9px; }
+.dns-auth-item { min-width:0;padding:9px;background:#f4f2eb;border:1px solid #e7e3d9;border-radius:7px; }
+.dns-auth-top { display:flex;justify-content:space-between;align-items:center;gap:8px; }
+.dns-auth-top strong { color:#63706d;font:10px var(--app-font-mono);text-transform:uppercase; }
+.dns-status { border-radius:20px;padding:3px 7px;background:#ebeae5;color:#68716e;font:9px var(--app-font-mono);text-transform:uppercase;white-space:nowrap; }
+.dns-status-published { background:#e3f0e7;color:#357052; }
+.dns-status-not-found,.dns-status-timed-out,.dns-status-unavailable { background:#f7edda;color:#9b6a21; }
+.dns-auth-name { margin-top:7px;color:#34454d;font:10px var(--app-font-mono);overflow-wrap:anywhere; }
+.dns-record-list { display:grid;gap:5px;margin:8px 0 0;padding-left:16px;color:#5c6764;font:9px/1.5 var(--app-font-mono);overflow-wrap:anywhere; }
 .factor-row { padding:8px 0;border-bottom:1px solid #efede7;display:flex;gap:10px;justify-content:space-between;font-size:10px;color:#5e6b6b; }
 .factor-row:last-child { border-bottom:0; }
 .factor-points { color:#a65d42;font:10px var(--app-font-mono);white-space:nowrap; }
